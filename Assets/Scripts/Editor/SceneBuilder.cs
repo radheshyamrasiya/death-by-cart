@@ -83,15 +83,52 @@ public class SceneBuilder : EditorWindow
         frontIndicator.GetComponent<Renderer>().material = frontMat;
         AssetDatabase.CreateAsset(frontMat, "Assets/Materials/FrontIndicator.mat");
 
+        // ==================== PLAYER ====================
+        GameObject player = new GameObject("Player");
+        player.transform.position = new Vector3(0, 0.1f, -3f); // Spawn behind cart
+
+        // CharacterController (used by PlayerMotor)
+        CharacterController playerCC = player.AddComponent<CharacterController>();
+        playerCC.height = 2f;
+        playerCC.radius = 0.4f;
+        playerCC.center = new Vector3(0, 1f, 0);
+
+        // Player scripts
+        player.AddComponent<PlayerMotor>();
+        player.AddComponent<PlayerStateMachine>();
+        player.AddComponent<CartInteraction>();
+
+        // Player body (visual capsule)
+        GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        playerBody.name = "PlayerBody";
+        playerBody.transform.SetParent(player.transform);
+        playerBody.transform.localPosition = new Vector3(0, 1f, 0);
+        playerBody.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
+        Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>()); // parent has CC
+
+        Material playerMat = new Material(GetDefaultLitShader());
+        playerMat.color = new Color(0.2f, 0.6f, 0.9f); // blue
+        playerBody.GetComponent<Renderer>().material = playerMat;
+        AssetDatabase.CreateAsset(playerMat, "Assets/Materials/PlayerBody.mat");
+
+        // Head indicator
+        GameObject playerHead = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        playerHead.name = "PlayerHead";
+        playerHead.transform.SetParent(player.transform);
+        playerHead.transform.localPosition = new Vector3(0, 2.1f, 0);
+        playerHead.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+        Object.DestroyImmediate(playerHead.GetComponent<SphereCollider>());
+        playerHead.GetComponent<Renderer>().material = playerMat;
+
         // ==================== CAMERA ====================
         Camera mainCam = Camera.main;
         if (mainCam != null)
         {
             CameraController camCtrl = mainCam.gameObject.AddComponent<CameraController>();
-            // Use SerializedObject to set the target field
+            // Target the PLAYER, not the cart
             SerializedObject so = new SerializedObject(camCtrl);
             SerializedProperty targetProp = so.FindProperty("target");
-            targetProp.objectReferenceValue = cart.transform;
+            targetProp.objectReferenceValue = player.transform;
             so.ApplyModifiedProperties();
         }
 
@@ -166,13 +203,14 @@ public class SceneBuilder : EditorWindow
         EditorUtility.DisplayDialog("Death By Cart", 
             "Test scene built successfully!\n\n" +
             "Controls:\n" +
-            "  WASD - Move cart\n" +
-            "  Shift - Sprint / Ram\n" +
-            "  Ctrl - Sneak (slow + silent)\n" +
+            "  WASD - Move (player or cart)\n" +
+            "  E - Grab / Release cart\n" +
+            "  Shift - Sprint\n" +
+            "  Ctrl - Sneak (on cart)\n" +
             "  C - Cycle camera mode\n" +
             "  U - Add item to cart\n" +
             "  I - Remove item from cart\n\n" +
-            "Watch the debug HUD on the right!\n" +
+            "Walk to cart, press E to grab it!\n" +
             "Hit Play to test!", "Let's Go! 🛒");
     }
 

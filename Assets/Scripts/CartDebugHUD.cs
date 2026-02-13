@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// On-screen debug HUD showing cart stats in real-time.
+/// On-screen debug HUD showing cart + player stats in real-time.
 /// Attach to the Cart GameObject (same as CartController + CartInventory).
 /// </summary>
 public class CartDebugHUD : MonoBehaviour
@@ -9,6 +9,11 @@ public class CartDebugHUD : MonoBehaviour
     private CartController cart;
     private CartInventory inventory;
     private Rigidbody rb;
+
+    // Player references (auto-found)
+    private PlayerStateMachine playerState;
+    private PlayerMotor playerMotor;
+    private CartInteraction cartInteraction;
 
     private GUIStyle headerStyle;
     private GUIStyle labelStyle;
@@ -21,6 +26,17 @@ public class CartDebugHUD : MonoBehaviour
         cart = GetComponent<CartController>();
         inventory = GetComponent<CartInventory>();
         rb = GetComponent<Rigidbody>();
+    }
+
+    private void Start()
+    {
+        // Auto-find player
+        playerMotor = FindFirstObjectByType<PlayerMotor>();
+        if (playerMotor != null)
+        {
+            playerState = playerMotor.GetComponent<PlayerStateMachine>();
+            cartInteraction = playerMotor.GetComponent<CartInteraction>();
+        }
     }
 
     private void InitStyles()
@@ -66,11 +82,45 @@ public class CartDebugHUD : MonoBehaviour
         float lineHeight = 22;
 
         // --- Background panel ---
-        GUI.Box(new Rect(panelX - 10, y - 10, panelWidth + 20, 340), "");
+        GUI.Box(new Rect(panelX - 10, y - 10, panelWidth + 20, 420), "");
 
-        // --- Header ---
-        GUI.Label(new Rect(panelX, y, panelWidth, 30), "🛒 CART DEBUG", headerStyle);
-        y += 30;
+        // --- Player State ---
+        GUI.Label(new Rect(panelX, y, panelWidth, 30), "👤 PLAYER", headerStyle);
+        y += 28;
+
+        if (playerState != null)
+        {
+            string stateIcon = playerState.CurrentState switch
+            {
+                PlayerStateMachine.PlayerState.FreeRoam => "🚶",
+                PlayerStateMachine.PlayerState.PushingCart => "🛒",
+                PlayerStateMachine.PlayerState.InventoryOpen => "📦",
+                _ => "?"
+            };
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"State: {stateIcon} {playerState.CurrentState}", labelStyle);
+            y += lineHeight;
+        }
+
+        if (playerMotor != null)
+        {
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Speed: {playerMotor.CurrentSpeed:F1} m/s {(playerMotor.IsSprinting ? "💨 SPRINT" : "")}", labelStyle);
+            y += lineHeight;
+        }
+
+        if (cartInteraction != null)
+        {
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Cart: {(cartInteraction.IsAttached ? "✅ Attached" : "— Not attached")}", labelStyle);
+            y += lineHeight;
+        }
+
+        y += 10;
+
+        // --- Cart Header ---
+        GUI.Label(new Rect(panelX, y, panelWidth, 30), "🛒 CART", headerStyle);
+        y += 28;
 
         if (inventory != null)
         {
@@ -97,7 +147,7 @@ public class CartDebugHUD : MonoBehaviour
                 _ => "???"
             };
             GUI.Label(new Rect(panelX, y, panelWidth, 30), tierText, tierStyle);
-            y += 35;
+            y += 30;
 
             // --- Item count ---
             GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
@@ -109,7 +159,7 @@ public class CartDebugHUD : MonoBehaviour
         {
             // --- Speed ---
             GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
-                $"Speed: {cart.CurrentSpeed:F1} / {cart.EffectiveMaxSpeed:F1} m/s", labelStyle);
+                $"Cart Speed: {cart.CurrentSpeed:F1} / {cart.EffectiveMaxSpeed:F1} m/s", labelStyle);
             y += lineHeight;
 
             // --- Mass ---
@@ -127,12 +177,7 @@ public class CartDebugHUD : MonoBehaviour
             else if (Mathf.Abs(cart.MoveInput) > 0.01f) moveState = "🚶 Moving";
 
             GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
-                $"State: {moveState}", labelStyle);
-            y += lineHeight;
-
-            // --- Input ---
-            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
-                $"Input: Move={cart.MoveInput:F0}  Turn={cart.TurnInput:F0}", labelStyle);
+                $"Cart State: {moveState}", labelStyle);
             y += lineHeight + 10;
         }
 
@@ -141,6 +186,8 @@ public class CartDebugHUD : MonoBehaviour
         y += lineHeight;
         GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "WASD = Move    Shift = Sprint", controlsStyle);
         y += 18;
+        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "E = Grab/Release Cart", controlsStyle);
+        y += 18;
         GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "Ctrl = Sneak   C = Camera Mode", controlsStyle);
         y += 18;
         GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "U = Add Item   I = Remove Item", controlsStyle);
@@ -148,16 +195,13 @@ public class CartDebugHUD : MonoBehaviour
 
     private void DrawBar(float x, float y, float width, float height, float fill, Color color)
     {
-        // Background
         Color oldColor = GUI.color;
         GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
         GUI.DrawTexture(new Rect(x, y, width, height), Texture2D.whiteTexture);
 
-        // Fill
         GUI.color = color;
         GUI.DrawTexture(new Rect(x, y, width * fill, height), Texture2D.whiteTexture);
 
-        // Border
         GUI.color = Color.white;
         GUI.Box(new Rect(x, y, width, height), "");
 
@@ -168,10 +212,10 @@ public class CartDebugHUD : MonoBehaviour
     {
         return tier switch
         {
-            CartInventory.FullnessTier.Empty => new Color(0.3f, 0.9f, 0.4f),  // Green
-            CartInventory.FullnessTier.Light => new Color(0.9f, 0.9f, 0.3f),  // Yellow
-            CartInventory.FullnessTier.Half => new Color(1f, 0.6f, 0.2f),     // Orange
-            CartInventory.FullnessTier.Full => new Color(1f, 0.2f, 0.2f),     // Red
+            CartInventory.FullnessTier.Empty => new Color(0.3f, 0.9f, 0.4f),
+            CartInventory.FullnessTier.Light => new Color(0.9f, 0.9f, 0.3f),
+            CartInventory.FullnessTier.Half => new Color(1f, 0.6f, 0.2f),
+            CartInventory.FullnessTier.Full => new Color(1f, 0.2f, 0.2f),
             _ => Color.white
         };
     }

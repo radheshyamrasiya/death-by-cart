@@ -54,6 +54,7 @@ public class CartController : MonoBehaviour
     private CartInventory.FullnessTier lastLoggedTier;
     private float wobbleTimer;
     private float currentWobbleDir;
+    private bool inputActive = false; // Starts disabled — enabled when player grabs cart
 
     // --- Public getters for debug HUD ---
     public float MoveInput => moveInput;
@@ -94,6 +95,15 @@ public class CartController : MonoBehaviour
 
     private void Update()
     {
+        if (!inputActive)
+        {
+            moveInput = 0f;
+            turnInput = 0f;
+            isSprinting = false;
+            isSneaking = false;
+            return;
+        }
+
         var keyboard = Keyboard.current;
         if (keyboard == null) return;
 
@@ -212,5 +222,33 @@ public class CartController : MonoBehaviour
         if (isSneaking) ems *= sneakSpeedMultiplier;
         else if (isSprinting) ems *= sprintMultiplier;
         return ems;
+    }
+
+    // === Called by CartInteraction ===
+
+    /// <summary>
+    /// Enable or disable cart input. Called when player grabs/releases the cart.
+    /// </summary>
+    public void SetInputActive(bool active)
+    {
+        inputActive = active;
+        if (!active)
+        {
+            moveInput = 0f;
+            turnInput = 0f;
+            isSprinting = false;
+            isSneaking = false;
+        }
+        Debug.Log($"[CART] Input {(active ? "ENABLED" : "DISABLED")}");
+    }
+
+    /// <summary>
+    /// Returns the world position behind the cart where the player should stand when pushing.
+    /// </summary>
+    public Vector3 GetPushPosition(float offsetBehind = 1.5f, float offsetUp = 0f)
+    {
+        return transform.position 
+             - transform.forward * offsetBehind 
+             + Vector3.up * offsetUp;
     }
 }
