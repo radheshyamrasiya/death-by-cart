@@ -4,7 +4,8 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Manages the player ↔ cart bond.
 /// Press E near a cart to grab it. Press E again to release.
-/// When grabbing: player snaps behind cart, cart input is enabled, player motor is disabled.
+/// Works with BOTH Starter Assets ThirdPersonController and our custom PlayerMotor.
+/// When grabbing: player snaps behind cart, cart input is enabled, player movement is disabled.
 /// When releasing: player walks free, cart stays put.
 /// </summary>
 public class CartInteraction : MonoBehaviour
@@ -20,7 +21,8 @@ public class CartInteraction : MonoBehaviour
 
     // Runtime
     private PlayerStateMachine stateMachine;
-    private PlayerMotor motor;
+    private CharacterController characterController;
+    private MonoBehaviour playerMovementScript; // Either ThirdPersonController or PlayerMotor
     private bool isAttached;
 
     // Events
@@ -34,7 +36,24 @@ public class CartInteraction : MonoBehaviour
     private void Awake()
     {
         stateMachine = GetComponent<PlayerStateMachine>();
-        motor = GetComponent<PlayerMotor>();
+        characterController = GetComponent<CharacterController>();
+
+        // Try Starter Assets first, fall back to our custom PlayerMotor
+        var tpc = GetComponent<StarterAssets.ThirdPersonController>();
+        if (tpc != null)
+        {
+            playerMovementScript = tpc;
+            Debug.Log("[INTERACTION] Using Starter Assets ThirdPersonController");
+        }
+        else
+        {
+            var motor = GetComponent<PlayerMotor>();
+            if (motor != null)
+            {
+                playerMovementScript = motor;
+                Debug.Log("[INTERACTION] Using custom PlayerMotor");
+            }
+        }
     }
 
     private void Update()
@@ -98,6 +117,12 @@ public class CartInteraction : MonoBehaviour
         // Enable cart controls
         cart.SetInputActive(true);
 
+        // Disable player movement (Starter Assets or custom)
+        if (playerMovementScript != null)
+        {
+            playerMovementScript.enabled = false;
+        }
+
         // Snap player behind cart
         SnapPlayerBehindCart();
 
@@ -120,6 +145,12 @@ public class CartInteraction : MonoBehaviour
 
         isAttached = false;
 
+        // Re-enable player movement
+        if (playerMovementScript != null)
+        {
+            playerMovementScript.enabled = true;
+        }
+
         // Switch state
         if (stateMachine != null)
         {
@@ -134,7 +165,7 @@ public class CartInteraction : MonoBehaviour
 
     private void SnapPlayerBehindCart()
     {
-        if (currentCart == null || motor == null) return;
+        if (currentCart == null) return;
 
         // Position: behind the cart
         Vector3 pushPos = currentCart.GetPushPosition(pushOffsetBehind, pushOffsetUp);
@@ -142,7 +173,19 @@ public class CartInteraction : MonoBehaviour
         // Face the same direction as the cart
         Quaternion pushRot = currentCart.transform.rotation;
 
-        motor.TeleportTo(pushPos, pushRot);
+        // Use CharacterController-safe teleport
+        if (characterController != null)
+        {
+            characterController.enabled = false;
+            transform.position = pushPos;
+            transform.rotation = pushRot;
+            characterController.enabled = true;
+        }
+        else
+        {
+            transform.position = pushPos;
+            transform.rotation = pushRot;
+        }
     }
 
     // Debug visualization

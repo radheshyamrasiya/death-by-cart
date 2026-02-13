@@ -27,9 +27,18 @@ public class SceneBuilder : EditorWindow
         groundMat.color = new Color(0.25f, 0.28f, 0.22f); // dull olive-grey
         ground.GetComponent<Renderer>().material = groundMat;
 
-        // Save material asset
+        // Ground physics material (zero bounce)
+        PhysicsMaterial groundPhysMat = new PhysicsMaterial("GroundPhysics");
+        groundPhysMat.bounciness = 0f;
+        groundPhysMat.dynamicFriction = 0.6f;
+        groundPhysMat.staticFriction = 0.6f;
+        groundPhysMat.bounceCombine = PhysicsMaterialCombine.Minimum;
+        ground.GetComponent<MeshCollider>().material = groundPhysMat;
+
+        // Save material assets
         EnsureFolder("Assets/Materials");
         AssetDatabase.CreateAsset(groundMat, "Assets/Materials/GroundFloor.mat");
+        AssetDatabase.CreateAsset(groundPhysMat, "Assets/Materials/GroundPhysics.physicMaterial");
 
         // ==================== WALLS (boundary) ====================
         CreateWall("WallNorth", new Vector3(0, 2.5f, 50), new Vector3(100, 5, 1));
@@ -39,18 +48,30 @@ public class SceneBuilder : EditorWindow
 
         // ==================== CART ====================
         GameObject cart = new GameObject("Cart");
-        cart.transform.position = new Vector3(0, 1f, 0);
+        cart.transform.position = new Vector3(0, 0.4f, 0); // Sits on ground (half collider height)
+
+        // Physics Material (zero bounce — prevents bouncing on ground)
+        PhysicsMaterial cartPhysMat = new PhysicsMaterial("CartPhysics");
+        cartPhysMat.bounciness = 0f;
+        cartPhysMat.dynamicFriction = 0.6f;
+        cartPhysMat.staticFriction = 0.6f;
+        cartPhysMat.bounceCombine = PhysicsMaterialCombine.Minimum;
+        cartPhysMat.frictionCombine = PhysicsMaterialCombine.Average;
+        AssetDatabase.CreateAsset(cartPhysMat, "Assets/Materials/CartPhysics.physicMaterial");
 
         // Rigidbody
         Rigidbody rb = cart.AddComponent<Rigidbody>();
         rb.mass = 5f;
         rb.useGravity = true;
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+        rb.interpolation = RigidbodyInterpolation.Interpolate; // Smooth visual movement
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous; // No clipping through ground
+        rb.constraints = RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
 
-        // Box Collider
+        // Box Collider with physics material
         BoxCollider col = cart.AddComponent<BoxCollider>();
         col.size = new Vector3(1f, 0.8f, 2f);
         col.center = new Vector3(0f, 0.4f, 0f);
+        col.material = cartPhysMat;
 
         // Cart scripts
         cart.AddComponent<CartController>();
@@ -83,53 +104,74 @@ public class SceneBuilder : EditorWindow
         frontIndicator.GetComponent<Renderer>().material = frontMat;
         AssetDatabase.CreateAsset(frontMat, "Assets/Materials/FrontIndicator.mat");
 
-        // ==================== PLAYER ====================
-        GameObject player = new GameObject("Player");
-        player.transform.position = new Vector3(0, 0.1f, -3f); // Spawn behind cart
+        // ==================== PLAYER (Starter Assets) ====================
+        // Load the Starter Assets prefabs
+        GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/StarterAssets/ThirdPersonController/Prefabs/PlayerCapsule.prefab");
+        GameObject cameraPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/StarterAssets/ThirdPersonController/Prefabs/PlayerFollowCamera.prefab");
 
-        // CharacterController (used by PlayerMotor)
-        CharacterController playerCC = player.AddComponent<CharacterController>();
-        playerCC.height = 2f;
-        playerCC.radius = 0.4f;
-        playerCC.center = new Vector3(0, 1f, 0);
+        GameObject player;
+        if (playerPrefab != null)
+        {
+            player = (GameObject)PrefabUtility.InstantiatePrefab(playerPrefab);
+            player.name = "Player";
+            player.transform.position = new Vector3(0, 0.1f, -3f);
 
-        // Player scripts
-        player.AddComponent<PlayerMotor>();
-        player.AddComponent<PlayerStateMachine>();
-        player.AddComponent<CartInteraction>();
+            // Add our custom scripts on top of Starter Assets
+            if (player.GetComponent<PlayerStateMachine>() == null)
+                player.AddComponent<PlayerStateMachine>();
+            if (player.GetComponent<CartInteraction>() == null)
+                player.AddComponent<CartInteraction>();
 
-        // Player body (visual capsule)
-        GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        playerBody.name = "PlayerBody";
-        playerBody.transform.SetParent(player.transform);
-        playerBody.transform.localPosition = new Vector3(0, 1f, 0);
-        playerBody.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
-        Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>()); // parent has CC
+            // Set ground layer for grounded check
+            var tpc = player.GetComponent<StarterAssets.ThirdPersonController>();
+            if (tpc != null)
+            {
+                tpc.GroundLayers = LayerMask.GetMask("Default");
+            }
 
-        Material playerMat = new Material(GetDefaultLitShader());
-        playerMat.color = new Color(0.2f, 0.6f, 0.9f); // blue
-        playerBody.GetComponent<Renderer>().material = playerMat;
-        AssetDatabase.CreateAsset(playerMat, "Assets/Materials/PlayerBody.mat");
+            Debug.Log("[SCENE] ✅ Starter Assets player spawned!");
+        }
+        else
+        {
+            // Fallback: create basic player if prefab not found
+            Debug.LogWarning("[SCENE] ⚠️ Starter Assets PlayerCapsule.prefab not found! Creating basic player.");
+            player = new GameObject("Player");
+            player.transform.position = new Vector3(0, 0.1f, -3f);
+            CharacterController playerCC = player.AddComponent<CharacterController>();
+            playerCC.height = 2f;
+            playerCC.radius = 0.4f;
+            playerCC.center = new Vector3(0, 1f, 0);
+            player.AddComponent<PlayerMotor>();
+            player.AddComponent<PlayerStateMachine>();
+            player.AddComponent<CartInteraction>();
 
-        // Head indicator
-        GameObject playerHead = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        playerHead.name = "PlayerHead";
-        playerHead.transform.SetParent(player.transform);
-        playerHead.transform.localPosition = new Vector3(0, 2.1f, 0);
-        playerHead.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-        Object.DestroyImmediate(playerHead.GetComponent<SphereCollider>());
-        playerHead.GetComponent<Renderer>().material = playerMat;
+            GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            playerBody.name = "PlayerBody";
+            playerBody.transform.SetParent(player.transform);
+            playerBody.transform.localPosition = new Vector3(0, 1f, 0);
+            playerBody.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
+            Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>());
+        }
 
-        // ==================== CAMERA ====================
+        // ==================== CAMERA (Cinemachine) ====================
+        // Delete default Main Camera (Starter Assets camera prefab replaces it)
         Camera mainCam = Camera.main;
         if (mainCam != null)
         {
-            CameraController camCtrl = mainCam.gameObject.AddComponent<CameraController>();
-            // Target the PLAYER, not the cart
-            SerializedObject so = new SerializedObject(camCtrl);
-            SerializedProperty targetProp = so.FindProperty("target");
-            targetProp.objectReferenceValue = player.transform;
-            so.ApplyModifiedProperties();
+            Object.DestroyImmediate(mainCam.gameObject);
+        }
+
+        if (cameraPrefab != null)
+        {
+            GameObject followCam = (GameObject)PrefabUtility.InstantiatePrefab(cameraPrefab);
+            followCam.name = "PlayerFollowCamera";
+            Debug.Log("[SCENE] ✅ Cinemachine follow camera spawned!");
+        }
+        else
+        {
+            Debug.LogWarning("[SCENE] ⚠️ PlayerFollowCamera.prefab not found! No camera created.");
         }
 
         // ==================== OBSTACLE CUBES ====================

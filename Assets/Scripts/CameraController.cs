@@ -12,7 +12,8 @@ public class CameraController : MonoBehaviour
     {
         Chase,
         TopDown,
-        OverTheShoulder
+        OverTheShoulder,
+        FirstPerson
     }
 
     [Header("Target")]
@@ -42,9 +43,23 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float shoulderHeight = 2f;
     [SerializeField] private float shoulderSide = 1.5f;
 
+    [Header("First-Person Cam (Cart Mode)")]
+    [SerializeField] private float fpEyeHeight = 1.7f;
+    [SerializeField] private float fpMinPitch = -60f;
+    [SerializeField] private float fpMaxPitch = 70f;
+    [Tooltip("Degrees player can look left/right before the cart starts turning")]
+    [SerializeField] private float fpFreeYawRange = 30f;
+    [Tooltip("How fast the cart turns to follow the camera when looking far")]
+    [SerializeField] private float fpCartTurnSpeed = 3f;
+
     // Mouse orbit state
     private float yaw;
     private float pitch = 20f;
+
+    // Auto-switch state
+    private CameraMode modeBeforeCart;
+    private bool wasAttached;
+    private float cartBaseYaw; // cart's forward yaw when attached
 
     // Player references
     private CartInteraction playerCartInteraction;
@@ -101,7 +116,55 @@ public class CameraController : MonoBehaviour
             Vector2 mouseDelta = mouse.delta.ReadValue();
             yaw += mouseDelta.x * mouseSensitivity * 0.1f;
             pitch -= mouseDelta.y * mouseSensitivity * 0.1f;
-            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+            pitch = Mathf.Clamp(pitch, 
+                currentMode == CameraMode.FirstPerson ? fpMinPitch : minPitch, 
+                currentMode == CameraMode.FirstPerson ? fpMaxPitch : maxPitch);
+        }
+
+        // --- Cart mode: limit yaw and steer cart ---
+        if (currentMode == CameraMode.FirstPerson && playerCartInteraction != null 
+            && playerCartInteraction.IsAttached && playerCartInteraction.AttachedCart != null)
+        {
+            Transform cartTransform = playerCartInteraction.AttachedCart.transform;
+            cartBaseYaw = cartTransform.eulerAngles.y;
+
+            // How far are we looking from cart's forward?
+            float yawOffset = Mathf.DeltaAngle(cartBaseYaw, yaw);
+
+            if (Mathf.Abs(yawOffset) > fpFreeYawRange)
+            {
+                // Turn the cart toward where we're looking
+                float turnDir = Mathf.Sign(yawOffset);
+                float turnAmount = (Mathf.Abs(yawOffset) - fpFreeYawRange) * fpCartTurnSpeed * Time.deltaTime;
+                cartTransform.Rotate(Vector3.up, turnDir * turnAmount, Space.World);
+            }
+
+            // Clamp camera yaw to not go too far from cart forward (±90° hard limit)
+            float maxYawOffset = 90f;
+            float clampedOffset = Mathf.Clamp(Mathf.DeltaAngle(cartBaseYaw, yaw), -maxYawOffset, maxYawOffset);
+            yaw = cartBaseYaw + clampedOffset;
+        }
+
+        // Auto-switch to FirstPerson when grabbing cart
+        if (playerCartInteraction != null)
+        {
+            bool attached = playerCartInteraction.IsAttached;
+            if (attached && !wasAttached)
+            {
+                modeBeforeCart = currentMode;
+                currentMode = CameraMode.FirstPerson;
+                // Snap yaw to cart's forward direction
+                if (playerCartInteraction.AttachedCart != null)
+                    yaw = playerCartInteraction.AttachedCart.transform.eulerAngles.y;
+                pitch = 10f;
+                Debug.Log("[CAMERA] Auto-switched to FirstPerson (cart mode)");
+            }
+            else if (!attached && wasAttached)
+            {
+                currentMode = modeBeforeCart;
+                Debug.Log($"[CAMERA] Restored to {currentMode}");
+            }
+            wasAttached = attached;
         }
     }
 
@@ -127,17 +190,31 @@ public class CameraController : MonoBehaviour
 
             case CameraMode.OverTheShoulder:
                 desiredPosition = CalculateOrbitPosition(shoulderDistance, shoulderHeight, shoulderSide);
-                Vector3 lookTarget = target.position + Vector3.up * 1.5f;
-                desiredRotation = Quaternion.LookRotation(lookTarget - desiredPosition);
+                Vector3 shoulderLookTarget = target.position + Vector3.up * 1.5f;
+                desiredRotation = Quaternion.LookRotation(shoulderLookTarget - desiredPosition);
+                break;
+
+            case CameraMode.FirstPerson:
+                // Camera at player's eye height, looking where mouse points
+                desiredPosition = target.position + Vector3.up * fpEyeHeight;
+                desiredRotation = Quaternion.Euler(pitch, yaw, 0f);
                 break;
 
             default:
                 return;
         }
 
-        // Smooth follow
-        transform.position = Vector3.Lerp(transform.position, desiredPosition, followSpeed * Time.deltaTime);
-        transform.rotation = desiredRotation;
+        // Smooth follow (except FP which snaps immediately)
+        if (currentMode == CameraMode.FirstPerson)
+        {
+            transform.position = desiredPosition;
+            transform.rotation = desiredRotation;
+        }
+        else
+        {
+            transform.position = Vector3.Lerp(transform.position, desiredPosition, followSpeed * Time.deltaTime);
+            transform.rotation = desiredRotation;
+        }
     }
 
     /// <summary>
@@ -176,7 +253,8 @@ public class CameraController : MonoBehaviour
         {
             CameraMode.Chase => CameraMode.TopDown,
             CameraMode.TopDown => CameraMode.OverTheShoulder,
-            CameraMode.OverTheShoulder => CameraMode.Chase,
+            CameraMode.OverTheShoulder => CameraMode.FirstPerson,
+            CameraMode.FirstPerson => CameraMode.Chase,
             _ => CameraMode.Chase
         };
 

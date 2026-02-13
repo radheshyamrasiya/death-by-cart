@@ -186,16 +186,25 @@ public class CartController : MonoBehaviour
         }
 
         // --- Sideways friction (drift gets worse when full) ---
+        // IMPORTANT: Preserve Y velocity — only modify horizontal (XZ) components
+        // Direct velocity manipulation on Y fights gravity/collision and causes bouncing
+        float savedY = rb.linearVelocity.y;
+
         float effectiveFriction = Mathf.Lerp(sidewaysFriction, sidewaysFriction * fullDriftMultiplier, fullness);
         Vector3 localVel = transform.InverseTransformDirection(rb.linearVelocity);
         localVel.x *= (1f - effectiveFriction);
         rb.linearVelocity = transform.TransformDirection(localVel);
 
-        // --- Speed cap ---
-        if (rb.linearVelocity.magnitude > effectiveMaxSpeed)
+        // --- Speed cap (horizontal only) ---
+        Vector3 horizontalVel = rb.linearVelocity;
+        horizontalVel.y = 0f;
+        if (horizontalVel.magnitude > effectiveMaxSpeed)
         {
-            rb.linearVelocity = rb.linearVelocity.normalized * effectiveMaxSpeed;
+            horizontalVel = horizontalVel.normalized * effectiveMaxSpeed;
         }
+
+        // Restore Y velocity untouched
+        rb.linearVelocity = new Vector3(horizontalVel.x, savedY, horizontalVel.z);
 
         // --- Cart wobble (scales with fullness) ---
         float effectiveWobble = Mathf.Lerp(wobbleIntensity, wobbleIntensity * fullWobbleMultiplier, fullness);
