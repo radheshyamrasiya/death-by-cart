@@ -78,31 +78,50 @@ public class SceneBuilder : EditorWindow
         cart.AddComponent<CartInventory>();
         cart.AddComponent<CartDebugHUD>();
 
-        // Cart Body (visual)
-        GameObject cartBody = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        cartBody.name = "CartBody";
-        cartBody.transform.SetParent(cart.transform);
-        cartBody.transform.localPosition = new Vector3(0, 0.4f, 0);
-        cartBody.transform.localScale = new Vector3(1f, 0.8f, 2f);
-        Object.DestroyImmediate(cartBody.GetComponent<BoxCollider>()); // parent has the collider
+        // Cart Body (visual — use Cart.fbx if available, fallback to primitives)
+        GameObject cartModel = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Cart/Cart.fbx");
+        if (cartModel != null)
+        {
+            GameObject cartVisual = (GameObject)PrefabUtility.InstantiatePrefab(cartModel);
+            cartVisual.name = "CartModel";
+            cartVisual.transform.SetParent(cart.transform);
+            cartVisual.transform.localPosition = Vector3.zero;
+            cartVisual.transform.localRotation = Quaternion.identity;
+            // Remove any colliders from the FBX — parent has the physics collider
+            foreach (var extraCol in cartVisual.GetComponentsInChildren<Collider>())
+            {
+                Object.DestroyImmediate(extraCol);
+            }
+            Debug.Log("[SCENE] ✅ Cart.fbx model loaded!");
+        }
+        else
+        {
+            Debug.LogWarning("[SCENE] ⚠️ Cart.fbx not found at Assets/Cart/Cart.fbx — using primitive cube.");
+            GameObject cartBody = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cartBody.name = "CartBody";
+            cartBody.transform.SetParent(cart.transform);
+            cartBody.transform.localPosition = new Vector3(0, 0.4f, 0);
+            cartBody.transform.localScale = new Vector3(1f, 0.8f, 2f);
+            Object.DestroyImmediate(cartBody.GetComponent<BoxCollider>());
 
-        Material cartMat = new Material(GetDefaultLitShader());
-        cartMat.color = new Color(0.7f, 0.7f, 0.75f); // metallic grey
-        cartBody.GetComponent<Renderer>().material = cartMat;
-        AssetDatabase.CreateAsset(cartMat, "Assets/Materials/CartMetal.mat");
+            Material cartMat = new Material(GetDefaultLitShader());
+            cartMat.color = new Color(0.7f, 0.7f, 0.75f);
+            cartBody.GetComponent<Renderer>().material = cartMat;
+            AssetDatabase.CreateAsset(cartMat, "Assets/Materials/CartMetal.mat");
 
-        // Front indicator (so you know which way is forward)
-        GameObject frontIndicator = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        frontIndicator.name = "FrontIndicator";
-        frontIndicator.transform.SetParent(cart.transform);
-        frontIndicator.transform.localPosition = new Vector3(0, 0.5f, 1.2f);
-        frontIndicator.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
-        Object.DestroyImmediate(frontIndicator.GetComponent<BoxCollider>());
+            // Front indicator
+            GameObject frontIndicator = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            frontIndicator.name = "FrontIndicator";
+            frontIndicator.transform.SetParent(cart.transform);
+            frontIndicator.transform.localPosition = new Vector3(0, 0.5f, 1.2f);
+            frontIndicator.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
+            Object.DestroyImmediate(frontIndicator.GetComponent<BoxCollider>());
 
-        Material frontMat = new Material(GetDefaultLitShader());
-        frontMat.color = Color.red;
-        frontIndicator.GetComponent<Renderer>().material = frontMat;
-        AssetDatabase.CreateAsset(frontMat, "Assets/Materials/FrontIndicator.mat");
+            Material frontMat = new Material(GetDefaultLitShader());
+            frontMat.color = Color.red;
+            frontIndicator.GetComponent<Renderer>().material = frontMat;
+            AssetDatabase.CreateAsset(frontMat, "Assets/Materials/FrontIndicator.mat");
+        }
 
         // ==================== PLAYER (Starter Assets) ====================
         // Load the Starter Assets prefabs
