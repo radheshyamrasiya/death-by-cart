@@ -1,0 +1,69 @@
+# Unity .gitignore
+# https://github.com/github/gitignore/blob/main/Unity.gitignore
+
+# =============== #
+# Unity generated #
+# =============== #
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# ============ #
+# Memory Snaps #
+# ============ #
+/[Mm]emoryCaptures/
+
+# ================= #
+# Asset meta data   #
+# ================= #
+!/[Aa]ssets/**/*.meta
+
+# ======================== #
+# Visual Studio / Rider    #
+# ======================== #
+.vs/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.idea/
+
+# ============ #
+# OS generated #
+# ============ #
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========== #
+# Misc        #
+# =========== #
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/[Pp]lugins/[Ee]ditor/JetBrains*
+
+# Crashlytics
+crashlytics-build.properties
+sysinfo.txt
+
+# Recordings
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
