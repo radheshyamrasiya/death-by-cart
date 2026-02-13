@@ -135,28 +135,13 @@ public class CameraController : MonoBehaviour
             currentMode == CameraMode.FirstPerson ? fpMinPitch : minPitch, 
             currentMode == CameraMode.FirstPerson ? fpMaxPitch : maxPitch);
 
-        // --- Cart mode: limit yaw and steer cart ---
+        // --- Cart mode: snap cart rotation to camera yaw ---
         if (currentMode == CameraMode.FirstPerson && playerCartInteraction != null 
             && playerCartInteraction.IsAttached && playerCartInteraction.AttachedCart != null)
         {
             Transform cartTransform = playerCartInteraction.AttachedCart.transform;
-            cartBaseYaw = cartTransform.eulerAngles.y;
-
-            // How far are we looking from cart's forward?
-            float yawOffset = Mathf.DeltaAngle(cartBaseYaw, yaw);
-
-            if (Mathf.Abs(yawOffset) > fpFreeYawRange)
-            {
-                // Turn the cart toward where we're looking
-                float turnDir = Mathf.Sign(yawOffset);
-                float turnAmount = (Mathf.Abs(yawOffset) - fpFreeYawRange) * fpCartTurnSpeed * Time.deltaTime;
-                cartTransform.Rotate(Vector3.up, turnDir * turnAmount, Space.World);
-            }
-
-            // Clamp camera yaw to not go too far from cart forward (±90° hard limit)
-            float maxYawOffset = 90f;
-            float clampedOffset = Mathf.Clamp(Mathf.DeltaAngle(cartBaseYaw, yaw), -maxYawOffset, maxYawOffset);
-            yaw = cartBaseYaw + clampedOffset;
+            // Cart directly faces wherever the camera is looking
+            cartTransform.rotation = Quaternion.Euler(0f, yaw, 0f);
         }
 
         // Auto-switch to FirstPerson when grabbing cart

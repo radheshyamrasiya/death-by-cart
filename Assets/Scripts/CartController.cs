@@ -196,11 +196,11 @@ public class CartController : MonoBehaviour
         float thrust = finalMoveForce * moveInput;
         rb.AddForce(transform.forward * thrust, ForceMode.Force);
 
-        // --- Steering ---
+        // --- Strafe (left/right lateral movement) ---
         if (Mathf.Abs(turnInput) > 0.01f)
         {
-            float effectiveTorque = turnTorque * turnScale;
-            rb.AddTorque(Vector3.up * effectiveTorque * turnInput, ForceMode.Force);
+            float strafeForce = finalMoveForce * turnInput;
+            rb.AddForce(transform.right * strafeForce, ForceMode.Force);
         }
 
         // --- Sideways friction (drift gets worse when full) ---
