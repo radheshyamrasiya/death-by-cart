@@ -20,7 +20,7 @@ public class PlayerMotor : MonoBehaviour
 
     // Runtime
     private CharacterController cc;
-    private Camera mainCam;
+    private CameraController camController;
     private Vector3 velocity;
     private float turnSmoothVelocity;
     private bool movementEnabled = true;
@@ -35,8 +35,13 @@ public class PlayerMotor : MonoBehaviour
     private void Awake()
     {
         cc = GetComponent<CharacterController>();
-        mainCam = Camera.main;
         Debug.Log("[PLAYER] ✅ PlayerMotor ready!");
+    }
+
+    private void Start()
+    {
+        // Find camera controller (may not exist in Awake yet)
+        camController = FindFirstObjectByType<CameraController>();
     }
 
     private void Update()
@@ -67,11 +72,11 @@ public class PlayerMotor : MonoBehaviour
         {
             float speed = IsSprinting ? sprintSpeed : walkSpeed;
 
-            // Direction relative to camera
+            // Direction relative to camera yaw
             float targetAngle = Mathf.Atan2(input.x, input.y) * Mathf.Rad2Deg;
-            if (mainCam != null)
+            if (camController != null)
             {
-                targetAngle += mainCam.transform.eulerAngles.y;
+                targetAngle += camController.GetYaw();
             }
 
             // Smooth rotation
