@@ -78,6 +78,13 @@ public class SceneBuilder : EditorWindow
         cart.AddComponent<CartInventory>();
         cart.AddComponent<CartDebugHUD>();
 
+        // Grid inventory system (RE4-style)
+        cart.AddComponent<GridInventory>();
+        cart.AddComponent<InventoryUI>();
+        cart.AddComponent<InventoryManager>();
+        cart.AddComponent<ItemDataLibrary>();
+        cart.AddComponent<ItemSpawner>();
+
         // Cart Body (visual — use Cart.fbx if available, fallback to primitives)
         GameObject cartModel = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Cart/Cart.fbx");
         if (cartModel != null)
@@ -85,8 +92,9 @@ public class SceneBuilder : EditorWindow
             GameObject cartVisual = (GameObject)PrefabUtility.InstantiatePrefab(cartModel);
             cartVisual.name = "CartModel";
             cartVisual.transform.SetParent(cart.transform);
-            cartVisual.transform.localPosition = Vector3.zero;
-            cartVisual.transform.localRotation = Quaternion.identity;
+            cartVisual.transform.localPosition = new Vector3(0, 0.3f, 0);
+            cartVisual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            cartVisual.transform.localScale = new Vector3(45.7f, 45.7f, 45.7f);
             // Remove any colliders from the FBX — parent has the physics collider
             foreach (var extraCol in cartVisual.GetComponentsInChildren<Collider>())
             {
@@ -140,17 +148,26 @@ public class SceneBuilder : EditorWindow
                 player.AddComponent<PlayerStateMachine>();
             if (player.GetComponent<CartInteraction>() == null)
                 player.AddComponent<CartInteraction>();
+            if (player.GetComponent<StaminaSystem>() == null)
+                player.AddComponent<StaminaSystem>();
+            if (player.GetComponent<StaminaBarUI>() == null)
+                player.AddComponent<StaminaBarUI>();
+            if (player.GetComponent<PlayerStaminaBridge>() == null)
+                player.AddComponent<PlayerStaminaBridge>();
+            if (player.GetComponent<ItemPickup>() == null)
+                player.AddComponent<ItemPickup>();
 
             // Set ground layer for grounded check
             var tpc = player.GetComponent<StarterAssets.ThirdPersonController>();
             if (tpc != null)
             {
                 tpc.GroundLayers = LayerMask.GetMask("Default");
-                // Let our CameraController handle the camera — disable TPC's camera rotation
                 tpc.LockCameraPosition = true;
+                tpc.MoveSpeed = 10f;    // Match cart non-sprint max
+                tpc.SprintSpeed = 20f;  // Match cart sprint max
             }
 
-            Debug.Log("[SCENE] ✅ Starter Assets player spawned!");
+            Debug.Log("[SCENE] ✅ Starter Assets player spawned with stamina!");
         }
         else
         {
@@ -165,6 +182,10 @@ public class SceneBuilder : EditorWindow
             player.AddComponent<PlayerMotor>();
             player.AddComponent<PlayerStateMachine>();
             player.AddComponent<CartInteraction>();
+            player.AddComponent<StaminaSystem>();
+            player.AddComponent<StaminaBarUI>();
+            player.AddComponent<PlayerStaminaBridge>();
+            player.AddComponent<ItemPickup>();
 
             GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             playerBody.name = "PlayerBody";

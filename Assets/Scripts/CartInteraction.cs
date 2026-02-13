@@ -144,6 +144,13 @@ public class CartInteraction : MonoBehaviour
     {
         if (!isAttached || currentCart == null) return;
 
+        // Force-close inventory if it's open
+        var invManager = currentCart.GetComponent<InventoryManager>();
+        if (invManager != null && invManager.IsOpen)
+        {
+            invManager.Close();
+        }
+
         // Disable cart controls
         currentCart.SetInputActive(false);
 

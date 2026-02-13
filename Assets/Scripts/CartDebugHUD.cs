@@ -8,12 +8,17 @@ public class CartDebugHUD : MonoBehaviour
 {
     private CartController cart;
     private CartInventory inventory;
+    private GridInventory gridInv;
+    private InventoryManager invManager;
     private Rigidbody rb;
 
     // Player references (auto-found)
     private PlayerStateMachine playerState;
     private PlayerMotor playerMotor;
     private CartInteraction cartInteraction;
+    private StaminaSystem stamina;
+    private CharacterController playerCC;
+    private Transform playerTransform;
 
     private GUIStyle headerStyle;
     private GUIStyle labelStyle;
@@ -25,6 +30,8 @@ public class CartDebugHUD : MonoBehaviour
     {
         cart = GetComponent<CartController>();
         inventory = GetComponent<CartInventory>();
+        gridInv = GetComponent<GridInventory>();
+        invManager = GetComponent<InventoryManager>();
         rb = GetComponent<Rigidbody>();
     }
 
@@ -36,7 +43,21 @@ public class CartDebugHUD : MonoBehaviour
         {
             playerState = playerMotor.GetComponent<PlayerStateMachine>();
             cartInteraction = playerMotor.GetComponent<CartInteraction>();
+            stamina = playerMotor.GetComponent<StaminaSystem>();
+            playerCC = playerMotor.GetComponent<CharacterController>();
+            playerTransform = playerMotor.transform;
         }
+        // Fallback: find on any object
+        if (stamina == null)
+            stamina = FindFirstObjectByType<StaminaSystem>();
+        if (cartInteraction == null)
+            cartInteraction = FindFirstObjectByType<CartInteraction>();
+        if (playerState == null)
+            playerState = FindFirstObjectByType<PlayerStateMachine>();
+        if (playerCC == null)
+            playerCC = FindFirstObjectByType<CharacterController>();
+        if (playerCC != null && playerTransform == null)
+            playerTransform = playerCC.transform;
     }
 
     private void InitStyles()
@@ -82,7 +103,7 @@ public class CartDebugHUD : MonoBehaviour
         float lineHeight = 22;
 
         // --- Background panel ---
-        GUI.Box(new Rect(panelX - 10, y - 10, panelWidth + 20, 420), "");
+        GUI.Box(new Rect(panelX - 10, y - 10, panelWidth + 20, 680), "");
 
         // --- Player State ---
         GUI.Label(new Rect(panelX, y, panelWidth, 30), "👤 PLAYER", headerStyle);
@@ -102,10 +123,29 @@ public class CartDebugHUD : MonoBehaviour
             y += lineHeight;
         }
 
-        if (playerMotor != null)
+        // Player speed from CharacterController
+        if (playerCC != null)
+        {
+            Vector3 vel = playerCC.velocity;
+            float speed = new Vector3(vel.x, 0, vel.z).magnitude;
+            bool sprinting = stamina != null && stamina.IsSprinting;
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Speed: {speed:F1} m/s {(sprinting ? "💨 SPRINT" : "")}", labelStyle);
+            y += lineHeight;
+        }
+        else if (playerMotor != null)
         {
             GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
                 $"Speed: {playerMotor.CurrentSpeed:F1} m/s {(playerMotor.IsSprinting ? "💨 SPRINT" : "")}", labelStyle);
+            y += lineHeight;
+        }
+
+        // Player position
+        if (playerTransform != null)
+        {
+            Vector3 pos = playerTransform.position;
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Pos: ({pos.x:F1}, {pos.y:F1}, {pos.z:F1})", labelStyle);
             y += lineHeight;
         }
 
@@ -113,6 +153,81 @@ public class CartDebugHUD : MonoBehaviour
         {
             GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
                 $"Cart: {(cartInteraction.IsAttached ? "✅ Attached" : "— Not attached")}", labelStyle);
+            y += lineHeight;
+        }
+
+        y += 10;
+
+        // --- Stamina ---
+        GUI.Label(new Rect(panelX, y, panelWidth, 30), "⚡ STAMINA", headerStyle);
+        y += 28;
+
+        if (stamina != null)
+        {
+            float stPct = stamina.StaminaPercent;
+            string stState = stamina.IsExhausted ? "💀 EXHAUSTED" :
+                             stamina.IsSprinting ? "💨 DRAINING" :
+                             stPct < 1f ? "♻️ Regen" : "✅ Full";
+
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Stamina: {stamina.CurrentStamina:F0}/{stamina.MaxStamina:F0}  {stState}", labelStyle);
+            y += lineHeight;
+
+            // Stamina color
+            Color stColor;
+            if (stamina.IsExhausted)
+                stColor = new Color(0.5f, 0f, 0f);
+            else if (stPct > 0.5f)
+                stColor = Color.Lerp(Color.yellow, Color.green, (stPct - 0.5f) * 2f);
+            else
+                stColor = Color.Lerp(Color.red, Color.yellow, stPct * 2f);
+
+            DrawBar(panelX, y, panelWidth - 20, 16, stPct, stColor);
+            y += 24;
+        }
+        else
+        {
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "— No StaminaSystem found", labelStyle);
+            y += lineHeight;
+        }
+
+        y += 10;
+
+        // --- Grid Inventory ---
+        GUI.Label(new Rect(panelX, y, panelWidth, 30), "📦 GRID INVENTORY", headerStyle);
+        y += 28;
+
+        if (gridInv != null)
+        {
+            int occupied = gridInv.OccupiedCells();
+            int total = gridInv.GridWidth * gridInv.GridHeight;
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Space: {occupied}/{total} cells ({gridInv.SpaceFullness * 100:F0}%)", labelStyle);
+            y += lineHeight;
+
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Weight: {gridInv.CurrentWeight:F1}/{gridInv.MaxWeight:F0} kg", labelStyle);
+            y += lineHeight;
+
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                $"Items: {gridInv.ItemCount}", labelStyle);
+            y += lineHeight;
+
+            // Space bar
+            DrawBar(panelX, y, panelWidth - 20, 14, gridInv.SpaceFullness,
+                Color.Lerp(Color.cyan, Color.magenta, gridInv.SpaceFullness));
+            y += 20;
+
+            if (invManager != null)
+            {
+                GUI.Label(new Rect(panelX, y, panelWidth, lineHeight),
+                    $"UI: {(invManager.IsOpen ? "📦 OPEN (Tab to close)" : "— Closed (Tab to open)")}", labelStyle);
+                y += lineHeight;
+            }
+        }
+        else
+        {
+            GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "— No GridInventory", labelStyle);
             y += lineHeight;
         }
 
@@ -186,11 +301,9 @@ public class CartDebugHUD : MonoBehaviour
         y += lineHeight;
         GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "WASD = Move    Shift = Sprint", controlsStyle);
         y += 18;
-        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "E = Grab/Release Cart", controlsStyle);
+        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "E/🎮Y = Grab Cart   Ctrl = Sneak", controlsStyle);
         y += 18;
-        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "Ctrl = Sneak   C = Camera Mode", controlsStyle);
-        y += 18;
-        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "U = Add Item   I = Remove Item", controlsStyle);
+        GUI.Label(new Rect(panelX, y, panelWidth, lineHeight), "C/D-Up = Camera   🎮RT=Sprint LT=Sneak", controlsStyle);
     }
 
     private void DrawBar(float x, float y, float width, float height, float fill, Color color)

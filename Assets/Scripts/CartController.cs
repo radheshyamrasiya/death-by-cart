@@ -2,17 +2,17 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Physics-based shopping cart controller with tank-style controls.
-/// Reads CartInventory fullness to scale speed, wobble, mass, and handling.
-/// WASD to move, Shift to sprint/ram, Ctrl to sneak.
+/// Physics-based shopping cart controller with strafe controls.
+/// Reads GridInventory weight to scale speed, wobble, mass, and handling.
+/// WASD to move, Shift to sprint, Ctrl to sneak.
 /// </summary>
 public class CartController : MonoBehaviour
 {
     [Header("Movement — Base (Empty Cart)")]
     [SerializeField] private float moveForce = 80f;
     [SerializeField] private float turnTorque = 40f;
-    [SerializeField] private float sprintMultiplier = 3f;
-    [SerializeField] private float maxSpeed = 20f;
+    [SerializeField] private float sprintMultiplier = 2f;
+    [SerializeField] private float maxSpeed = 10f;
 
     [Header("Movement — Full Cart Penalties")]
     [Tooltip("Speed multiplier when cart is 100% full (0.4 = 40% of base speed)")]
@@ -42,21 +42,26 @@ public class CartController : MonoBehaviour
     [Tooltip("Wobble multiplier at 100% full")]
     [SerializeField] private float fullWobbleMultiplier = 4f;
 
+    [Header("Stamina Drain")]
+    [Tooltip("Extra stamina drain multiplier when cart is 100% full")]
+    [SerializeField] private float fullStaminaDrainMultiplier = 2.5f;
+
     // --- Runtime state ---
     private Rigidbody rb;
-    private CartInventory inventory;
+    private GridInventory gridInventory;      // NEW: uses GridInventory
+    private CartInventory oldInventory;       // LEGACY: fallback
+    private StaminaSystem stamina;
     private float baseMass;
     private float moveInput;
     private float turnInput;
     private bool isSprinting;
     private bool isSneaking;
     private float debugLogTimer;
-    private CartInventory.FullnessTier lastLoggedTier;
     private float wobbleTimer;
     private float currentWobbleDir;
-    private bool inputActive = false; // Starts disabled — enabled when player grabs cart
+    private bool inputActive = false;
 
-    // --- Public getters for debug HUD ---
+    // --- Public getters ---
     public float MoveInput => moveInput;
     public float TurnInput => turnInput;
     public bool IsSprinting => isSprinting;
@@ -64,10 +69,32 @@ public class CartController : MonoBehaviour
     public float CurrentSpeed => rb != null ? rb.linearVelocity.magnitude : 0f;
     public float EffectiveMaxSpeed => GetEffectiveMaxSpeed();
 
+    /// <summary>Get cart fullness 0-1 from GridInventory (weight-based).</summary>
+    public float CartFullness
+    {
+        get
+        {
+            if (gridInventory != null) return gridInventory.Fullness;
+            if (oldInventory != null) return oldInventory.Fullness;
+            return 0f;
+        }
+    }
+
+    /// <summary>Get current cart weight in kg.</summary>
+    public float CartWeight
+    {
+        get
+        {
+            if (gridInventory != null) return gridInventory.CurrentWeight;
+            return 0f;
+        }
+    }
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        inventory = GetComponent<CartInventory>();
+        gridInventory = GetComponent<GridInventory>();
+        oldInventory = GetComponent<CartInventory>();
 
         if (rb == null)
         {
@@ -76,10 +103,12 @@ public class CartController : MonoBehaviour
             return;
         }
 
-        if (inventory == null)
-        {
-            Debug.LogWarning("[CART] ⚠️ No CartInventory found — fullness scaling disabled.");
-        }
+        if (gridInventory != null)
+            Debug.Log("[CART] ✅ Using GridInventory for weight scaling.");
+        else if (oldInventory != null)
+            Debug.Log("[CART] ⚠️ Using legacy CartInventory (GridInventory not found).");
+        else
+            Debug.LogWarning("[CART] ⚠️ No inventory found — weight scaling disabled.");
 
         baseMass = rb.mass;
         rb.angularDamping = 3f;
@@ -90,7 +119,11 @@ public class CartController : MonoBehaviour
 
     private void Start()
     {
-        Debug.Log("[CART] ✅ Script is alive! Controls: WASD=Move, Shift=Sprint, Ctrl=Sneak, U=AddItem, I=RemoveItem, C=Camera");
+        stamina = FindFirstObjectByType<StaminaSystem>();
+        if (stamina == null)
+            Debug.LogWarning("[CART] ⚠️ No StaminaSystem found — sprint won't drain stamina.");
+
+        Debug.Log("[CART] ✅ Controls: WASD=Move, Shift=Sprint, Ctrl=Sneak");
     }
 
     private void Update()
@@ -121,38 +154,32 @@ public class CartController : MonoBehaviour
             isSneaking = keyboard.leftCtrlKey.isPressed;
         }
 
-        // --- Gamepad input (overrides if stronger) ---
+        // --- Gamepad input ---
         var gamepad = Gamepad.current;
         if (gamepad != null)
         {
             Vector2 leftStick = gamepad.leftStick.ReadValue();
-            // Use left stick Y for move, X for turn
             if (Mathf.Abs(leftStick.y) > Mathf.Abs(moveInput))
                 moveInput = leftStick.y;
             if (Mathf.Abs(leftStick.x) > Mathf.Abs(turnInput))
                 turnInput = leftStick.x;
 
-            // Right trigger = sprint, Left trigger = sneak
             if (gamepad.rightTrigger.isPressed) isSprinting = true;
             if (gamepad.leftTrigger.isPressed) isSneaking = true;
         }
 
-        // Can't sprint and sneak at the same time
         if (isSneaking) isSprinting = false;
 
-        // --- Log tier transitions ---
-        if (inventory != null && inventory.Tier != lastLoggedTier)
+        // Gate sprint on stamina
+        if (isSprinting && stamina != null && !stamina.CanSprint)
+            isSprinting = false;
+
+        // Tell stamina system — drain harder when cart is heavier
+        if (stamina != null)
         {
-            lastLoggedTier = inventory.Tier;
-            string tierMsg = inventory.Tier switch
-            {
-                CartInventory.FullnessTier.Empty => "🥷 STEALTH MODE — Cart is silent",
-                CartInventory.FullnessTier.Light => "👟 LIGHT LOAD — Slight squeak",
-                CartInventory.FullnessTier.Half  => "⚠️ HALF FULL — Zombies can hear you!",
-                CartInventory.FullnessTier.Full  => "🔔 DINNER BELL — RUN FOR YOUR LIFE!",
-                _ => "???"
-            };
-            Debug.Log($"[CART] TIER CHANGED → {tierMsg} (Fullness: {inventory.Fullness * 100:F0}%)");
+            bool actualSprinting = isSprinting && Mathf.Abs(moveInput) > 0.01f;
+            float drainMult = 1f + (CartFullness * (fullStaminaDrainMultiplier - 1f));
+            stamina.SetSprinting(actualSprinting, drainMult);
         }
     }
 
@@ -160,24 +187,23 @@ public class CartController : MonoBehaviour
     {
         if (rb == null) return;
 
-        float fullness = inventory != null ? inventory.Fullness : 0f;
+        float fullness = CartFullness;
 
-        // --- Periodic debug log (every 2 seconds while moving) ---
+        // --- Periodic debug log ---
         debugLogTimer -= Time.fixedDeltaTime;
         if (debugLogTimer <= 0f && rb.linearVelocity.magnitude > 0.5f)
         {
-            Debug.Log($"[CART] Speed={rb.linearVelocity.magnitude:F1}/{GetEffectiveMaxSpeed():F1} | Mass={rb.mass:F1} | Fullness={fullness * 100:F0}% | {(isSneaking ? "SNEAKING" : isSprinting ? "SPRINTING" : "Normal")}");
+            Debug.Log($"[CART] Speed={rb.linearVelocity.magnitude:F1}/{GetEffectiveMaxSpeed():F1} | Mass={rb.mass:F1} | Weight={CartWeight:F1}kg ({fullness * 100:F0}%) | {(isSneaking ? "SNEAKING" : isSprinting ? "SPRINTING" : "Normal")}");
             debugLogTimer = 2f;
         }
 
-        // --- Dynamic mass (heavier when full) ---
+        // --- Dynamic mass ---
         rb.mass = baseMass + (fullExtraMass * fullness);
 
-        // --- Speed scaling based on fullness ---
+        // --- Speed scaling ---
         float speedScale = Mathf.Lerp(1f, fullSpeedMultiplier, fullness);
         float turnScale = Mathf.Lerp(1f, fullTurnMultiplier, fullness);
 
-        // --- Sneak / Sprint modifiers ---
         float finalMoveForce = moveForce * speedScale;
         float effectiveMaxSpeed = maxSpeed * speedScale;
 
@@ -192,22 +218,19 @@ public class CartController : MonoBehaviour
             effectiveMaxSpeed *= sprintMultiplier;
         }
 
-        // --- Forward / Reverse thrust ---
+        // --- Forward / Reverse ---
         float thrust = finalMoveForce * moveInput;
         rb.AddForce(transform.forward * thrust, ForceMode.Force);
 
-        // --- Strafe (left/right lateral movement) ---
+        // --- Strafe ---
         if (Mathf.Abs(turnInput) > 0.01f)
         {
             float strafeForce = finalMoveForce * turnInput;
             rb.AddForce(transform.right * strafeForce, ForceMode.Force);
         }
 
-        // --- Sideways friction (drift gets worse when full) ---
-        // IMPORTANT: Preserve Y velocity — only modify horizontal (XZ) components
-        // Direct velocity manipulation on Y fights gravity/collision and causes bouncing
+        // --- Sideways friction ---
         float savedY = rb.linearVelocity.y;
-
         float effectiveFriction = Mathf.Lerp(sidewaysFriction, sidewaysFriction * fullDriftMultiplier, fullness);
         Vector3 localVel = transform.InverseTransformDirection(rb.linearVelocity);
         localVel.x *= (1f - effectiveFriction);
@@ -220,18 +243,15 @@ public class CartController : MonoBehaviour
         {
             horizontalVel = horizontalVel.normalized * effectiveMaxSpeed;
         }
-
-        // Restore Y velocity untouched
         rb.linearVelocity = new Vector3(horizontalVel.x, savedY, horizontalVel.z);
 
-        // --- Cart wobble (scales with fullness) ---
+        // --- Cart wobble ---
         float effectiveWobble = Mathf.Lerp(wobbleIntensity, wobbleIntensity * fullWobbleMultiplier, fullness);
-
         wobbleTimer -= Time.fixedDeltaTime;
         if (wobbleTimer <= 0f)
         {
             currentWobbleDir = Random.Range(-1f, 1f);
-            wobbleTimer = Mathf.Lerp(wobbleInterval, wobbleInterval * 0.5f, fullness); // wobbles faster when full
+            wobbleTimer = Mathf.Lerp(wobbleInterval, wobbleInterval * 0.5f, fullness);
         }
 
         if (rb.linearVelocity.magnitude > 1f)
@@ -243,7 +263,7 @@ public class CartController : MonoBehaviour
 
     private float GetEffectiveMaxSpeed()
     {
-        float fullness = inventory != null ? inventory.Fullness : 0f;
+        float fullness = CartFullness;
         float speedScale = Mathf.Lerp(1f, fullSpeedMultiplier, fullness);
         float ems = maxSpeed * speedScale;
         if (isSneaking) ems *= sneakSpeedMultiplier;
@@ -253,9 +273,6 @@ public class CartController : MonoBehaviour
 
     // === Called by CartInteraction ===
 
-    /// <summary>
-    /// Enable or disable cart input. Called when player grabs/releases the cart.
-    /// </summary>
     public void SetInputActive(bool active)
     {
         inputActive = active;
@@ -269,9 +286,6 @@ public class CartController : MonoBehaviour
         Debug.Log($"[CART] Input {(active ? "ENABLED" : "DISABLED")}");
     }
 
-    /// <summary>
-    /// Returns the world position behind the cart where the player should stand when pushing.
-    /// </summary>
     public Vector3 GetPushPosition(float offsetBehind = 1.5f, float offsetUp = 0f)
     {
         return transform.position 
