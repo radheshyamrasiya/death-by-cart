@@ -127,8 +127,6 @@ public class SceneBuilder : EditorWindow
         // Load the Starter Assets prefabs
         GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
             "Assets/StarterAssets/ThirdPersonController/Prefabs/PlayerCapsule.prefab");
-        GameObject cameraPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-            "Assets/StarterAssets/ThirdPersonController/Prefabs/PlayerFollowCamera.prefab");
 
         GameObject player;
         if (playerPrefab != null)
@@ -148,6 +146,8 @@ public class SceneBuilder : EditorWindow
             if (tpc != null)
             {
                 tpc.GroundLayers = LayerMask.GetMask("Default");
+                // Let our CameraController handle the camera — disable TPC's camera rotation
+                tpc.LockCameraPosition = true;
             }
 
             Debug.Log("[SCENE] ✅ Starter Assets player spawned!");
@@ -174,23 +174,30 @@ public class SceneBuilder : EditorWindow
             Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>());
         }
 
-        // ==================== CAMERA (Cinemachine) ====================
-        // Delete default Main Camera (Starter Assets camera prefab replaces it)
-        Camera mainCam = Camera.main;
-        if (mainCam != null)
+        // ==================== CAMERA ====================
+        // Keep the default Main Camera and add our CameraController.
+        // The ThirdPersonController needs a "MainCamera"-tagged camera to exist
+        // for camera-relative movement to work.
+        Camera existingCam = Camera.main;
+        if (existingCam != null)
         {
-            Object.DestroyImmediate(mainCam.gameObject);
-        }
+            // Ensure MainCamera tag
+            existingCam.gameObject.tag = "MainCamera";
 
-        if (cameraPrefab != null)
-        {
-            GameObject followCam = (GameObject)PrefabUtility.InstantiatePrefab(cameraPrefab);
-            followCam.name = "PlayerFollowCamera";
-            Debug.Log("[SCENE] ✅ Cinemachine follow camera spawned!");
+            // Add our camera controller targeting the player
+            if (existingCam.gameObject.GetComponent<CameraController>() == null)
+            {
+                CameraController camCtrl = existingCam.gameObject.AddComponent<CameraController>();
+                SerializedObject so = new SerializedObject(camCtrl);
+                SerializedProperty targetProp = so.FindProperty("target");
+                targetProp.objectReferenceValue = player.transform;
+                so.ApplyModifiedProperties();
+            }
+            Debug.Log("[SCENE] ✅ Main Camera configured with CameraController targeting player.");
         }
         else
         {
-            Debug.LogWarning("[SCENE] ⚠️ PlayerFollowCamera.prefab not found! No camera created.");
+            Debug.LogWarning("[SCENE] ⚠️ No Main Camera found in scene!");
         }
 
         // ==================== OBSTACLE CUBES ====================
