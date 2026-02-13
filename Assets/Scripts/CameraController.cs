@@ -102,9 +102,11 @@ public class CameraController : MonoBehaviour
     private void Update()
     {
         var keyboard = Keyboard.current;
-        if (keyboard == null) return;
+        var gamepad = Gamepad.current;
 
-        if (keyboard.cKey.wasPressedThisFrame)
+        // Cycle camera mode: C key or D-pad Up
+        if ((keyboard != null && keyboard.cKey.wasPressedThisFrame) ||
+            (gamepad != null && gamepad.dpad.up.wasPressedThisFrame))
         {
             CycleMode();
         }
@@ -116,10 +118,22 @@ public class CameraController : MonoBehaviour
             Vector2 mouseDelta = mouse.delta.ReadValue();
             yaw += mouseDelta.x * mouseSensitivity * 0.1f;
             pitch -= mouseDelta.y * mouseSensitivity * 0.1f;
-            pitch = Mathf.Clamp(pitch, 
-                currentMode == CameraMode.FirstPerson ? fpMinPitch : minPitch, 
-                currentMode == CameraMode.FirstPerson ? fpMaxPitch : maxPitch);
         }
+
+        // Gamepad right stick look
+        if (gamepad != null)
+        {
+            Vector2 rightStick = gamepad.rightStick.ReadValue();
+            if (rightStick.sqrMagnitude > 0.01f)
+            {
+                yaw += rightStick.x * mouseSensitivity * 2f * Time.deltaTime * 60f;
+                pitch -= rightStick.y * mouseSensitivity * 2f * Time.deltaTime * 60f;
+            }
+        }
+
+        pitch = Mathf.Clamp(pitch, 
+            currentMode == CameraMode.FirstPerson ? fpMinPitch : minPitch, 
+            currentMode == CameraMode.FirstPerson ? fpMaxPitch : maxPitch);
 
         // --- Cart mode: limit yaw and steer cart ---
         if (currentMode == CameraMode.FirstPerson && playerCartInteraction != null 

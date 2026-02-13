@@ -104,20 +104,38 @@ public class CartController : MonoBehaviour
             return;
         }
 
+        // --- Keyboard input ---
         var keyboard = Keyboard.current;
-        if (keyboard == null) return;
-
-        // Movement input
         moveInput = 0f;
-        if (keyboard.wKey.isPressed) moveInput += 1f;
-        if (keyboard.sKey.isPressed) moveInput -= 1f;
-
         turnInput = 0f;
-        if (keyboard.dKey.isPressed) turnInput += 1f;
-        if (keyboard.aKey.isPressed) turnInput -= 1f;
+        isSprinting = false;
+        isSneaking = false;
 
-        isSprinting = keyboard.leftShiftKey.isPressed;
-        isSneaking = keyboard.leftCtrlKey.isPressed;
+        if (keyboard != null)
+        {
+            if (keyboard.wKey.isPressed) moveInput += 1f;
+            if (keyboard.sKey.isPressed) moveInput -= 1f;
+            if (keyboard.dKey.isPressed) turnInput += 1f;
+            if (keyboard.aKey.isPressed) turnInput -= 1f;
+            isSprinting = keyboard.leftShiftKey.isPressed;
+            isSneaking = keyboard.leftCtrlKey.isPressed;
+        }
+
+        // --- Gamepad input (overrides if stronger) ---
+        var gamepad = Gamepad.current;
+        if (gamepad != null)
+        {
+            Vector2 leftStick = gamepad.leftStick.ReadValue();
+            // Use left stick Y for move, X for turn
+            if (Mathf.Abs(leftStick.y) > Mathf.Abs(moveInput))
+                moveInput = leftStick.y;
+            if (Mathf.Abs(leftStick.x) > Mathf.Abs(turnInput))
+                turnInput = leftStick.x;
+
+            // Right trigger = sprint, Left trigger = sneak
+            if (gamepad.rightTrigger.isPressed) isSprinting = true;
+            if (gamepad.leftTrigger.isPressed) isSneaking = true;
+        }
 
         // Can't sprint and sneak at the same time
         if (isSneaking) isSprinting = false;

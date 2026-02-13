@@ -59,10 +59,14 @@ public class CartInteraction : MonoBehaviour
     private void Update()
     {
         var keyboard = Keyboard.current;
-        if (keyboard == null) return;
+        var gamepad = Gamepad.current;
 
-        // E key to toggle cart
-        if (keyboard.eKey.wasPressedThisFrame)
+        // E key or Gamepad Y/Triangle to toggle cart
+        bool interactPressed = false;
+        if (keyboard != null && keyboard.eKey.wasPressedThisFrame) interactPressed = true;
+        if (gamepad != null && gamepad.buttonNorth.wasPressedThisFrame) interactPressed = true;
+
+        if (interactPressed)
         {
             if (isAttached)
             {
