@@ -104,8 +104,8 @@ public class CameraController : MonoBehaviour
         var keyboard = Keyboard.current;
         var gamepad = Gamepad.current;
 
-        // Cycle camera mode: C key or D-pad Up
-        if ((keyboard != null && keyboard.cKey.wasPressedThisFrame) ||
+        // Cycle camera mode: T key or D-pad Up
+        if ((keyboard != null && keyboard.tKey.wasPressedThisFrame) ||
             (gamepad != null && gamepad.dpad.up.wasPressedThisFrame))
         {
             CycleMode();

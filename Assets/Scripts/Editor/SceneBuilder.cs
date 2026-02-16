@@ -3,6 +3,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEngine.Rendering;
+using UnityEngine.AI;
+using Unity.AI.Navigation;
 
 /// <summary>
 /// One-click scene builder. Go to: DeathByCart → Build Test Scene
@@ -39,6 +41,13 @@ public class SceneBuilder : EditorWindow
         EnsureFolder("Assets/Materials");
         AssetDatabase.CreateAsset(groundMat, "Assets/Materials/GroundFloor.mat");
         AssetDatabase.CreateAsset(groundPhysMat, "Assets/Materials/GroundPhysics.physicMaterial");
+
+        // NavMesh surface for zombie pathfinding — auto-bake!
+        NavMeshSurface navSurface = ground.AddComponent<NavMeshSurface>();
+        navSurface.collectObjects = CollectObjects.All;
+        navSurface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+        navSurface.BuildNavMesh();
+        Debug.Log("[SCENE] ✅ NavMesh baked automatically on Ground!");
 
         // ==================== WALLS (boundary) ====================
         CreateWall("WallNorth", new Vector3(0, 2.5f, 50), new Vector3(100, 5, 1));
@@ -156,6 +165,12 @@ public class SceneBuilder : EditorWindow
                 player.AddComponent<PlayerStaminaBridge>();
             if (player.GetComponent<ItemPickup>() == null)
                 player.AddComponent<ItemPickup>();
+            if (player.GetComponent<HealthSystem>() == null)
+                player.AddComponent<HealthSystem>();
+            if (player.GetComponent<HealthBarUI>() == null)
+                player.AddComponent<HealthBarUI>();
+            if (player.GetComponent<PlayerCrouch>() == null)
+                player.AddComponent<PlayerCrouch>();
 
             // Set ground layer for grounded check
             var tpc = player.GetComponent<StarterAssets.ThirdPersonController>();
@@ -167,7 +182,7 @@ public class SceneBuilder : EditorWindow
                 tpc.SprintSpeed = 20f;  // Match cart sprint max
             }
 
-            Debug.Log("[SCENE] ✅ Starter Assets player spawned with stamina!");
+            Debug.Log("[SCENE] ✅ Starter Assets player spawned with stamina + health!");
         }
         else
         {
@@ -186,6 +201,9 @@ public class SceneBuilder : EditorWindow
             player.AddComponent<StaminaBarUI>();
             player.AddComponent<PlayerStaminaBridge>();
             player.AddComponent<ItemPickup>();
+            player.AddComponent<HealthSystem>();
+            player.AddComponent<HealthBarUI>();
+            player.AddComponent<PlayerCrouch>();
 
             GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             playerBody.name = "PlayerBody";
@@ -289,17 +307,26 @@ public class SceneBuilder : EditorWindow
         AssetDatabase.Refresh();
 
         Debug.Log("✅ Test Scene built! Hit Play to test.");
+
+        // ==================== NOISE + ZOMBIES ====================
+        // Add NoiseSystem and ZombieSpawner to cart
+        if (cart.GetComponent<NoiseSystem>() == null)
+            cart.AddComponent<NoiseSystem>();
+        if (cart.GetComponent<ZombieSpawner>() == null)
+            cart.AddComponent<ZombieSpawner>();
+
+        Debug.Log("[SCENE] ✅ NoiseSystem + ZombieSpawner added to cart!");
         EditorUtility.DisplayDialog("Death By Cart", 
             "Test scene built successfully!\n\n" +
             "Controls:\n" +
             "  WASD - Move (player or cart)\n" +
             "  E - Grab / Release cart\n" +
+            "  F - Pick up / Deposit items\n" +
+            "  G - Drop carried item\n" +
+            "  Tab - Open inventory\n" +
             "  Shift - Sprint\n" +
-            "  Ctrl - Sneak (on cart)\n" +
-            "  C - Cycle camera mode\n" +
-            "  U - Add item to cart\n" +
-            "  I - Remove item from cart\n\n" +
-            "Walk to cart, press E to grab it!\n" +
+            "  Ctrl - Sneak (on cart)\n\n" +
+            "Zombies will chase you — sneak to survive!\n" +
             "Hit Play to test!", "Let's Go! 🛒");
     }
 
