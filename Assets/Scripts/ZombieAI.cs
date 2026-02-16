@@ -67,6 +67,7 @@ public class ZombieAI : MonoBehaviour
     private float stateTimer;
     private float memoryTimer;
     private bool canSeeTarget;
+    public bool CanSeePlayer => canSeeTarget;
     private bool canHearTarget;
     private float alertSnapTimer; // Instant face-target on alert
 
@@ -221,6 +222,7 @@ public class ZombieAI : MonoBehaviour
     private bool CheckVision()
     {
         if (target == null) return false;
+        if (HidingSpot.IsPlayerHiding) return false;
 
         float effRange = EffectiveVisionRange;
         float effAngle = EffectiveVisionAngle;
@@ -250,6 +252,19 @@ public class ZombieAI : MonoBehaviour
         if (target == null) return false;
 
         float effHearing = EffectiveHearingRange;
+
+        // Cupboard noise — check BEFORE hiding skip (the cupboard itself makes noise)
+        if (HidingSpot.CupboardNoiseRadius > 0f)
+        {
+            float distToCupboard = Vector3.Distance(transform.position, HidingSpot.CupboardNoisePosition);
+            if (distToCupboard < HidingSpot.CupboardNoiseRadius && distToCupboard < effHearing)
+            {
+                lastKnownPosition = HidingSpot.CupboardNoisePosition;
+                return true;
+            }
+        }
+
+        if (HidingSpot.IsPlayerHiding) return false;
 
         // Check cart noise
         NoiseSystem noise = FindFirstObjectByType<NoiseSystem>();
@@ -408,7 +423,7 @@ public class ZombieAI : MonoBehaviour
         }
 
         // Close enough to attack player?
-        if (distToTarget < attackRange && canSeeTarget)
+        if (distToTarget < attackRange && canSeeTarget && !HidingSpot.IsPlayerHiding)
         {
             TransitionTo(ZombieState.Attack);
             return;
@@ -432,6 +447,12 @@ public class ZombieAI : MonoBehaviour
             memoryTimer -= Time.deltaTime;
             if (memoryTimer <= 0f)
             {
+                // Don't give up if investigating a hiding spot
+                if (isInvestigating)
+                {
+                    agent.SetDestination(investigatePosition);
+                    return;
+                }
                 // Give up, go back to patrol
                 TransitionTo(ZombieState.Patrol);
                 return;
@@ -447,6 +468,13 @@ public class ZombieAI : MonoBehaviour
         if (target == null)
         {
             TransitionTo(ZombieState.Idle);
+            return;
+        }
+
+        // Can't attack a hiding player
+        if (HidingSpot.IsPlayerHiding)
+        {
+            TransitionTo(ZombieState.Patrol);
             return;
         }
 
@@ -798,6 +826,34 @@ public class ZombieAI : MonoBehaviour
             zombieRenderer.material.color = originalColor;
 
         Debug.Log($"[ZOMBIE] {name} stun wore off.");
+    }
+
+    // ======================== INVESTIGATE ========================
+
+    private bool isInvestigating;
+    private Vector3 investigatePosition;
+
+    /// <summary>Called by HidingSpot when a zombie saw the player enter.</summary>
+    public void SetInvestigateTarget(Vector3 position)
+    {
+        isInvestigating = true;
+        investigatePosition = position;
+        lastKnownPosition = position;
+
+        // Force chase toward the cupboard
+        if (currentState != ZombieState.Chase)
+            TransitionTo(ZombieState.Chase);
+
+        agent.SetDestination(position);
+    }
+
+    /// <summary>Called when investigation is over.</summary>
+    public void ClearInvestigateTarget()
+    {
+        isInvestigating = false;
+        // Reset path and go back to patrol away from the cupboard
+        agent.ResetPath();
+        TransitionTo(ZombieState.Patrol);
     }
 
     private void OnDestroy()

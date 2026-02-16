@@ -106,9 +106,18 @@ public class ZombieSpawner : MonoBehaviour
         // NavMeshAgent
         NavMeshAgent agent = zombie.AddComponent<NavMeshAgent>();
         agent.speed = 2f;
-        agent.radius = 0.4f;
         agent.height = 1.8f;
         agent.angularSpeed = 200f;
+
+        // NavMesh radius matched to visual size per type
+        switch (type)
+        {
+            case ZombieAI.ZombieType.Runner:   agent.radius = 0.3f;  break;
+            case ZombieAI.ZombieType.Shambler:  agent.radius = 0.4f;  break;
+            case ZombieAI.ZombieType.Listener:  agent.radius = 0.4f;  break;
+            case ZombieAI.ZombieType.Brute:     agent.radius = 0.55f; break;
+            default:                            agent.radius = 0.4f;  break;
+        }
 
         // ZombieAI
         ZombieAI ai = zombie.AddComponent<ZombieAI>();

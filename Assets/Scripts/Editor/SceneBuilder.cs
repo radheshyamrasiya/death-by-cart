@@ -293,6 +293,129 @@ public class SceneBuilder : EditorWindow
             obs.GetComponent<Renderer>().material = obstacleMat;
         }
 
+        // ==================== WALLS (L-SHAPED BUILDING) ====================
+        {
+            Material wallMat = new Material(GetDefaultLitShader());
+            wallMat.color = new Color(0.55f, 0.55f, 0.5f); // Gray concrete
+
+            // Helper: create wall segment with NavMesh obstacle
+            System.Action<string, Vector3, Vector3> MakeWall = (name, pos, scale) =>
+            {
+                GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                wall.name = name;
+                wall.transform.position = pos;
+                wall.transform.localScale = scale;
+                wall.isStatic = true;
+                wall.GetComponent<Renderer>().material = wallMat;
+
+                // NavMeshObstacle with carving — zombies navigate around walls
+                var obstacle = wall.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+                obstacle.carving = true;
+                obstacle.carvingMoveThreshold = 0.1f;
+                obstacle.carvingTimeToStationary = 0.1f;
+                obstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
+                obstacle.size = Vector3.one; // matches collider (local scale handles actual size)
+            };
+
+            // Room 1 — small enclosed room at (-10, 0, 10)
+            float wallH = 3f;
+            float wallThick = 0.3f;
+            float roomW = 6f;
+            float roomD = 5f;
+            Vector3 roomCenter = new Vector3(-10f, wallH / 2f, 10f);
+
+            // Back wall
+            MakeWall("Wall_Room_Back", roomCenter + new Vector3(0, 0, roomD / 2f),
+                new Vector3(roomW, wallH, wallThick));
+            // Left wall
+            MakeWall("Wall_Room_Left", roomCenter + new Vector3(-roomW / 2f, 0, 0),
+                new Vector3(wallThick, wallH, roomD));
+            // Right wall (partial — has a door gap)
+            MakeWall("Wall_Room_Right_Top", roomCenter + new Vector3(roomW / 2f, 0, roomD / 4f),
+                new Vector3(wallThick, wallH, roomD / 2f));
+            // Front wall left half
+            MakeWall("Wall_Room_Front_L", roomCenter + new Vector3(-roomW / 4f - 0.5f, 0, -roomD / 2f),
+                new Vector3(roomW / 2f - 1f, wallH, wallThick));
+            // Front wall right half (door gap in middle)
+            MakeWall("Wall_Room_Front_R", roomCenter + new Vector3(roomW / 4f + 0.5f, 0, -roomD / 2f),
+                new Vector3(roomW / 2f - 1f, wallH, wallThick));
+
+            // Corridor — extends from room right side
+            float corL = 8f;
+            float corW = 3f;
+            Vector3 corStart = roomCenter + new Vector3(roomW / 2f, 0, -roomD / 4f);
+
+            // Corridor top wall
+            MakeWall("Wall_Corridor_Top", corStart + new Vector3(corL / 2f, 0, corW / 2f),
+                new Vector3(corL, wallH, wallThick));
+            // Corridor bottom wall
+            MakeWall("Wall_Corridor_Bot", corStart + new Vector3(corL / 2f, 0, -corW / 2f),
+                new Vector3(corL, wallH, wallThick));
+            // Corridor end wall
+            MakeWall("Wall_Corridor_End", corStart + new Vector3(corL, 0, 0),
+                new Vector3(wallThick, wallH, corW));
+
+            // Standalone wall segment near center for LOS testing
+            MakeWall("Wall_Standalone_1", new Vector3(5f, wallH / 2f, -8f),
+                new Vector3(4f, wallH, wallThick));
+            MakeWall("Wall_Standalone_2", new Vector3(5f, wallH / 2f, -8f) + new Vector3(2f, 0, -2f),
+                new Vector3(wallThick, wallH, 4f));
+
+            Debug.Log("[SCENE] ✅ Walls spawned (L-shaped building + standalone walls)");
+        }
+
+        // ==================== CUPBOARD (HIDING SPOT) ====================
+        {
+            // Place inside the room
+            Vector3 cupboardPos = new Vector3(-12f, 0f, 11.5f); // back-left corner of room
+
+            GameObject cupboard = new GameObject("Cupboard");
+            cupboard.transform.position = cupboardPos;
+
+            // Cupboard body — tall brown box
+            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "CupboardBody";
+            body.transform.SetParent(cupboard.transform);
+            body.transform.localPosition = new Vector3(0, 1f, 0);
+            body.transform.localScale = new Vector3(0.8f, 2f, 0.6f);
+            Renderer bodyRend = body.GetComponent<Renderer>();
+            Material woodMat = new Material(GetDefaultLitShader());
+            woodMat.color = new Color(0.45f, 0.28f, 0.1f); // Dark wood
+            bodyRend.material = woodMat;
+
+            // Door detail — slightly lighter panel
+            GameObject door = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            door.name = "CupboardDoor";
+            door.transform.SetParent(cupboard.transform);
+            door.transform.localPosition = new Vector3(0, 1f, -0.31f);
+            door.transform.localScale = new Vector3(0.7f, 1.8f, 0.02f);
+            Object.Destroy(door.GetComponent<Collider>()); // Door is cosmetic
+            Renderer doorRend = door.GetComponent<Renderer>();
+            Material doorMat = new Material(GetDefaultLitShader());
+            doorMat.color = new Color(0.55f, 0.35f, 0.15f); // Lighter wood
+            doorRend.material = doorMat;
+
+            // Handle dot
+            GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            handle.name = "DoorHandle";
+            handle.transform.SetParent(cupboard.transform);
+            handle.transform.localPosition = new Vector3(0.25f, 1f, -0.33f);
+            handle.transform.localScale = Vector3.one * 0.06f;
+            Object.Destroy(handle.GetComponent<Collider>());
+            Renderer handleRend = handle.GetComponent<Renderer>();
+            Material handleMat = new Material(GetDefaultLitShader());
+            handleMat.color = new Color(0.7f, 0.65f, 0.4f); // Brass
+            handleRend.material = handleMat;
+
+            // Add HidingSpot script
+            cupboard.AddComponent<HidingSpot>();
+
+            // Face outward from the wall
+            cupboard.transform.rotation = Quaternion.Euler(0, 180, 0);
+
+            Debug.Log("[SCENE] ✅ Cupboard (hiding spot) placed at (-12, 0, 11.5) inside room");
+        }
+
         // ==================== RC CAR PICKUP (WHITE CUBE) ====================
         {
             GameObject rcPickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
