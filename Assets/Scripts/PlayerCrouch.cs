@@ -3,7 +3,8 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Player crouch controller. Press C (keyboard) or Left Stick Click (gamepad) to toggle crouch.
-/// When crouching: move speed reduced, noise drastically reduced, player model scales down.
+/// When crouching: move speed reduced, noise drastically reduced, CharacterController height shrinks.
+/// The crouch ANIMATION handles the visual — no model scaling needed.
 /// Attach to the Player GameObject.
 /// </summary>
 public class PlayerCrouch : MonoBehaviour
@@ -11,17 +12,19 @@ public class PlayerCrouch : MonoBehaviour
     [Header("Crouch Settings")]
     [SerializeField] private float crouchSpeedMultiplier = 0.4f;
     [SerializeField] private float crouchNoiseMultiplier = 0.15f;
-    [SerializeField] private float crouchScaleY = 0.6f;
+    [SerializeField] private float crouchCCHeightMultiplier = 0.6f;
     [SerializeField] private float crouchTransitionSpeed = 8f;
 
     // Runtime
     private bool isCrouching;
     private StarterAssets.ThirdPersonController tpc;
+    private CharacterController cc;
     private float baseMoveSpeed;
     private float baseSprintSpeed;
     private bool savedSpeeds;
-    private float targetScaleY = 1f;
-    private float originalScaleY = 1f;
+    private float originalCCHeight;
+    private Vector3 originalCCCenter;
+    private float targetCCHeight;
 
     // Public API
     public bool IsCrouching => isCrouching;
@@ -30,13 +33,21 @@ public class PlayerCrouch : MonoBehaviour
     private void Start()
     {
         tpc = GetComponent<StarterAssets.ThirdPersonController>();
+        cc = GetComponent<CharacterController>();
+
         if (tpc != null)
         {
             baseMoveSpeed = tpc.MoveSpeed;
             baseSprintSpeed = tpc.SprintSpeed;
             savedSpeeds = true;
         }
-        originalScaleY = transform.localScale.y;
+
+        if (cc != null)
+        {
+            originalCCHeight = cc.height;
+            originalCCCenter = cc.center;
+            targetCCHeight = originalCCHeight;
+        }
     }
 
     private void Update()
@@ -61,10 +72,13 @@ public class PlayerCrouch : MonoBehaviour
             StandUp();
         }
 
-        // Smooth scale transition
-        Vector3 scale = transform.localScale;
-        scale.y = Mathf.Lerp(scale.y, targetScaleY, Time.deltaTime * crouchTransitionSpeed);
-        transform.localScale = scale;
+        // Smooth CharacterController height transition
+        if (cc != null)
+        {
+            cc.height = Mathf.Lerp(cc.height, targetCCHeight, Time.deltaTime * crouchTransitionSpeed);
+            // Keep the CC center at half-height so feet stay on the ground
+            cc.center = new Vector3(originalCCCenter.x, cc.height * 0.5f, originalCCCenter.z);
+        }
     }
 
     private void ToggleCrouch()
@@ -79,12 +93,14 @@ public class PlayerCrouch : MonoBehaviour
     {
         if (isCrouching) return;
         isCrouching = true;
-        targetScaleY = originalScaleY * crouchScaleY;
+
+        // Shrink CharacterController height (collision/detection only)
+        // The crouch ANIMATION handles the visual change
+        targetCCHeight = originalCCHeight * crouchCCHeightMultiplier;
 
         // Reduce speed — overrides carry slowdown
         if (tpc != null && savedSpeeds)
         {
-            // Read current speed (might already be slowed by carry weight)
             tpc.MoveSpeed *= crouchSpeedMultiplier;
             tpc.SprintSpeed *= crouchSpeedMultiplier;
         }
@@ -96,12 +112,13 @@ public class PlayerCrouch : MonoBehaviour
     {
         if (!isCrouching) return;
         isCrouching = false;
-        targetScaleY = originalScaleY;
+
+        // Restore CharacterController height
+        targetCCHeight = originalCCHeight;
 
         // Restore speed — but keep carry weight penalty if carrying
         if (tpc != null && savedSpeeds)
         {
-            // Undo crouch multiplier
             tpc.MoveSpeed /= crouchSpeedMultiplier;
             tpc.SprintSpeed /= crouchSpeedMultiplier;
         }

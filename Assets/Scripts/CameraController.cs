@@ -45,10 +45,10 @@ public class CameraController : MonoBehaviour
 
     [Header("First-Person Cam (Cart Mode)")]
     [SerializeField] private float fpEyeHeight = 1.7f;
-    [SerializeField] private float fpMinPitch = -60f;
-    [SerializeField] private float fpMaxPitch = 70f;
-    [Tooltip("Degrees player can look left/right before the cart starts turning")]
-    [SerializeField] private float fpFreeYawRange = 30f;
+    [SerializeField] private float fpMinPitch = -15f;
+    [SerializeField] private float fpMaxPitch = 15f;
+    [Tooltip("Degrees player can look left/right in first person")]
+    [SerializeField] private float fpMaxYaw = 15f;
     [Tooltip("How fast the cart turns to follow the camera when looking far")]
     [SerializeField] private float fpCartTurnSpeed = 3f;
 
@@ -135,13 +135,16 @@ public class CameraController : MonoBehaviour
             currentMode == CameraMode.FirstPerson ? fpMinPitch : minPitch, 
             currentMode == CameraMode.FirstPerson ? fpMaxPitch : maxPitch);
 
-        // --- Cart mode: snap cart rotation to camera yaw ---
+        // --- Cart mode: clamp yaw relative to cart forward ---
         if (currentMode == CameraMode.FirstPerson && playerCartInteraction != null 
             && playerCartInteraction.IsAttached && playerCartInteraction.AttachedCart != null)
         {
             Transform cartTransform = playerCartInteraction.AttachedCart.transform;
-            // Cart directly faces wherever the camera is looking
-            cartTransform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            float cartYaw = cartTransform.eulerAngles.y;
+            // Clamp yaw to ±15° relative to cart forward
+            float deltaYaw = Mathf.DeltaAngle(cartYaw, yaw);
+            deltaYaw = Mathf.Clamp(deltaYaw, -fpMaxYaw, fpMaxYaw);
+            yaw = cartYaw + deltaYaw;
         }
 
         // Auto-switch to FirstPerson when grabbing cart

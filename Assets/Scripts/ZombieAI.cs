@@ -34,7 +34,7 @@ public class ZombieAI : MonoBehaviour
     [SerializeField] private float attackRange = 2f;
     [SerializeField] private float attackDamage = 20f;
     [SerializeField] private float attackCooldown = 1.5f;
-    [SerializeField] private float attackKnockback = 3f;
+    [SerializeField] private float attackKnockback = 1.5f;
 
     [Header("Memory")]
     [SerializeField] private float chaseMemory = 5f;
@@ -155,7 +155,7 @@ public class ZombieAI : MonoBehaviour
                 hearingRange = 20f;
                 moveSpeed = 1.2f; chaseSpeed = 2.5f;
                 attackDamage = 35f;
-                attackKnockback = 6f;
+                attackKnockback = 3f;
                 break;
         }
     }
@@ -524,20 +524,17 @@ public class ZombieAI : MonoBehaviour
         // Deal damage
         targetHealth.TakeDamage(attackDamage, transform.position);
 
-        // Knockback
+        // Knockback (horizontal only — no vertical launch)
         if (target != null)
         {
-            Vector3 knockDir = (target.position - transform.position).normalized;
+            Vector3 knockDir = (target.position - transform.position);
+            knockDir.y = 0f;  // Purely horizontal push
+            knockDir.Normalize();
+
             var cc = target.GetComponent<CharacterController>();
             if (cc != null)
             {
-                // CharacterController doesn't use physics, so we use Move
                 cc.Move(knockDir * attackKnockback * 0.1f);
-            }
-            var rb = target.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.AddForce(knockDir * attackKnockback, ForceMode.Impulse);
             }
         }
 

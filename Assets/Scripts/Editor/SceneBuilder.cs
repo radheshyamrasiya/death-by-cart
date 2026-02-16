@@ -182,8 +182,128 @@ public class SceneBuilder : EditorWindow
             {
                 tpc.GroundLayers = LayerMask.GetMask("Default");
                 tpc.LockCameraPosition = true;
-                tpc.MoveSpeed = 10f;    // Match cart non-sprint max
-                tpc.SprintSpeed = 20f;  // Match cart sprint max
+                tpc.MoveSpeed = 4f;     // Walk state: Speed < 5 threshold
+                tpc.SprintSpeed = 8f;   // Run state: Speed > 5 threshold
+
+                // Ensure TPC's required input components exist
+                if (player.GetComponent<StarterAssets.StarterAssetsInputs>() == null)
+                    player.AddComponent<StarterAssets.StarterAssetsInputs>();
+#if ENABLE_INPUT_SYSTEM
+                if (player.GetComponent<UnityEngine.InputSystem.PlayerInput>() == null)
+                {
+                    var pi = player.AddComponent<UnityEngine.InputSystem.PlayerInput>();
+                    // Try to load the StarterAssets input actions
+                    var inputActions = AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(
+                        "Assets/StarterAssets/InputSystem/StarterAssets.inputactions");
+                    if (inputActions != null)
+                        pi.actions = inputActions;
+                }
+#endif
+            }
+
+            // Add animation bridge
+            if (player.GetComponent<PlayerAnimationController>() == null)
+                player.AddComponent<PlayerAnimationController>();
+
+            // Replace Starter Assets capsule visual with Mixamo model
+            GameObject mixamoModel = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Player/Animations/HumanCharacter.fbx");
+            if (mixamoModel != null)
+            {
+                // ── NUKE old Starter Assets visuals but KEEP the camera target ──
+                // ThirdPersonController needs CinemachineCameraTarget (usually "PlayerCameraRoot")
+                var tpcRef = player.GetComponent<StarterAssets.ThirdPersonController>();
+                GameObject cameraRoot = tpcRef != null ? tpcRef.CinemachineCameraTarget : null;
+
+                // Remove ALL renderers and mesh filters (catches blue capsule)
+                foreach (var renderer in player.GetComponentsInChildren<Renderer>(true))
+                {
+                    // Don't destroy renderers on the camera root
+                    if (cameraRoot != null && renderer.gameObject == cameraRoot) continue;
+                    Object.DestroyImmediate(renderer);
+                }
+                foreach (var meshFilter in player.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    Object.DestroyImmediate(meshFilter);
+                }
+                foreach (var smr in player.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    Object.DestroyImmediate(smr);
+                }
+
+                // Remove old visual children (but keep camera root and scripted objects)
+                for (int i = player.transform.childCount - 1; i >= 0; i--)
+                {
+                    Transform child = player.transform.GetChild(i);
+                    // KEEP: camera root, any child with MonoBehaviours
+                    if (cameraRoot != null && child.gameObject == cameraRoot) continue;
+                    if (child.GetComponent<MonoBehaviour>() != null) continue;
+                    if (child.GetComponent<CharacterController>() != null) continue;
+                    Object.DestroyImmediate(child.gameObject);
+                }
+
+                // If camera root was destroyed or missing, create a new one
+                if (cameraRoot == null)
+                {
+                    cameraRoot = new GameObject("PlayerCameraRoot");
+                    cameraRoot.transform.SetParent(player.transform);
+                    cameraRoot.transform.localPosition = new Vector3(0, 1.5f, 0); // Head height
+                    cameraRoot.transform.localRotation = Quaternion.identity;
+                }
+                // Make sure TPC has the camera target
+                if (tpcRef != null)
+                {
+                    tpcRef.CinemachineCameraTarget = cameraRoot;
+                }
+
+                // Remove old Animator on root
+                Animator oldAnim = player.GetComponent<Animator>();
+                if (oldAnim != null) Object.DestroyImmediate(oldAnim);
+
+                Debug.Log("[SCENE] ✅ Removed old visuals, preserved camera target");
+
+                // ── Instantiate Mixamo model as child ──
+                GameObject playerVisual = (GameObject)PrefabUtility.InstantiatePrefab(mixamoModel);
+                playerVisual.name = "PlayerModel";
+                playerVisual.transform.SetParent(player.transform);
+                playerVisual.transform.localPosition = Vector3.zero;
+                playerVisual.transform.localRotation = Quaternion.identity;
+                playerVisual.transform.localScale = Vector3.one;
+
+                // Remove colliders from FBX — CharacterController handles physics
+                foreach (var extraCol in playerVisual.GetComponentsInChildren<Collider>())
+                {
+                    Object.DestroyImmediate(extraCol);
+                }
+
+                // ── Assign Animator Controller ──
+                Animator anim = playerVisual.GetComponent<Animator>();
+                if (anim == null)
+                    anim = playerVisual.AddComponent<Animator>();
+                
+                anim.applyRootMotion = false;    // Movement by CharacterController, NOT animation
+                anim.stabilizeFeet = true;       // Prevents foot sliding / lateral sway
+                anim.feetPivotActive = 1f;       // Full foot IK stabilization
+
+                RuntimeAnimatorController animController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    "Assets/Animations/PlayerAnimator.controller");
+                if (animController != null)
+                {
+                    anim.runtimeAnimatorController = animController;
+                    Debug.Log("[SCENE] ✅ Animator Controller assigned!");
+                }
+
+                // Apply Human.png texture if materials not imported
+                ApplyCharacterTexture(playerVisual);
+
+                // Measure model bounds and auto-fit CharacterController
+                AutoFitCharacterController(player, playerVisual);
+
+                Debug.Log("[SCENE] ✅ Mixamo player model replaced capsule!");
+            }
+            else
+            {
+                Debug.LogWarning("[SCENE] ⚠️ HumanCharacter.fbx not found — keeping Starter Assets capsule.");
             }
 
             Debug.Log("[SCENE] ✅ Starter Assets player spawned with stamina + health!");
@@ -210,13 +330,64 @@ public class SceneBuilder : EditorWindow
             player.AddComponent<PlayerCrouch>();
             player.AddComponent<RCCarItem>();
             player.AddComponent<GadgetInventory>();
+            player.AddComponent<PlayerAnimationController>();
 
-            GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            playerBody.name = "PlayerBody";
-            playerBody.transform.SetParent(player.transform);
-            playerBody.transform.localPosition = new Vector3(0, 1f, 0);
-            playerBody.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
-            Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>());
+            // Try to load Mixamo character model
+            GameObject playerModel = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Player/Animations/HumanCharacter.fbx");
+
+            if (playerModel != null)
+            {
+                GameObject playerVisual = (GameObject)PrefabUtility.InstantiatePrefab(playerModel);
+                playerVisual.name = "PlayerModel";
+                playerVisual.transform.SetParent(player.transform);
+                playerVisual.transform.localPosition = Vector3.zero;
+                playerVisual.transform.localRotation = Quaternion.identity;
+                playerVisual.transform.localScale = Vector3.one;
+
+                // Remove any colliders from the FBX — CharacterController handles physics
+                foreach (var extraCol in playerVisual.GetComponentsInChildren<Collider>())
+                {
+                    Object.DestroyImmediate(extraCol);
+                }
+
+                // Assign Animator Controller if it exists
+                Animator anim = playerVisual.GetComponent<Animator>();
+                if (anim == null)
+                    anim = playerVisual.AddComponent<Animator>();
+                
+                anim.applyRootMotion = false;
+
+                RuntimeAnimatorController animController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    "Assets/Animations/PlayerAnimator.controller");
+                if (animController != null)
+                {
+                    anim.runtimeAnimatorController = animController;
+                    Debug.Log("[SCENE] ✅ Animator Controller assigned to player model!");
+                }
+                else
+                {
+                    Debug.LogWarning("[SCENE] ⚠️ PlayerAnimator.controller not found! Run DeathByCart → Setup Player Character first.");
+                }
+
+                // Apply Human.png texture if materials not imported
+                ApplyCharacterTexture(playerVisual);
+
+                // Measure model bounds and auto-fit CharacterController
+                AutoFitCharacterController(player, playerVisual);
+
+                Debug.Log("[SCENE] ✅ Mixamo player model loaded!");
+            }
+            else
+            {
+                Debug.LogWarning("[SCENE] ⚠️ HumanCharacter.fbx not found — using primitive capsule.");
+                GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                playerBody.name = "PlayerBody";
+                playerBody.transform.SetParent(player.transform);
+                playerBody.transform.localPosition = new Vector3(0, 1f, 0);
+                playerBody.transform.localScale = new Vector3(0.8f, 1f, 0.8f);
+                Object.DestroyImmediate(playerBody.GetComponent<CapsuleCollider>());
+            }
         }
 
         // ==================== CAMERA ====================
@@ -590,6 +761,88 @@ public class SceneBuilder : EditorWindow
                 AssetDatabase.CreateFolder(current, parts[i]);
             }
             current = next;
+        }
+    }
+
+    /// <summary>
+    /// Apply Human.png texture to the character model if materials weren't imported.
+    /// </summary>
+    private static void ApplyCharacterTexture(GameObject characterVisual)
+    {
+        Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
+            "Assets/Models/Player/Animations/Human.png");
+        if (tex == null)
+        {
+            Debug.LogWarning("[SCENE] ⚠️ Human.png texture not found.");
+            return;
+        }
+
+        foreach (var r in characterVisual.GetComponentsInChildren<Renderer>())
+        {
+            if (r.sharedMaterial == null || r.sharedMaterial.mainTexture == null)
+            {
+                EnsureFolder("Assets/Materials");
+                string matPath = "Assets/Materials/CharacterSkin.mat";
+                Material mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+                if (mat == null)
+                {
+                    mat = new Material(GetDefaultLitShader());
+                    mat.mainTexture = tex;
+                    mat.name = "CharacterSkin";
+                    AssetDatabase.CreateAsset(mat, matPath);
+                }
+                else
+                {
+                    mat.mainTexture = tex;
+                }
+                r.sharedMaterial = mat;
+                Debug.Log($"[SCENE] ✅ Applied texture to {r.gameObject.name}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Auto-fit CharacterController to the actual model bounds.
+    /// </summary>
+    private static void AutoFitCharacterController(GameObject player, GameObject modelVisual)
+    {
+        var renderers = modelVisual.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0) return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        float height = bounds.size.y;
+        float radius = Mathf.Max(bounds.extents.x, bounds.extents.z);
+
+        Debug.Log($"[SCENE] Character bounds: height={height:F2} radius={radius:F2}");
+
+        // Size warning
+        if (height > 3f)
+        {
+            Debug.LogWarning($"[SCENE] ⚠️ Character is {height:F1}m tall! Run 'Setup Player Character' to fix FBX scale.");
+            float scale = 1.75f / height;
+            modelVisual.transform.localScale = Vector3.one * scale;
+
+            // Re-measure
+            bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                bounds.Encapsulate(renderers[i].bounds);
+            height = bounds.size.y;
+            radius = Mathf.Max(bounds.extents.x, bounds.extents.z);
+            Debug.Log($"[SCENE] Applied emergency scale: {scale:F4}, new height: {height:F2}m");
+        }
+
+        // Update or add CharacterController
+        CharacterController cc = player.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            cc.skinWidth = 0.08f;
+            cc.height = Mathf.Max(height * 0.95f, 0.5f);
+            cc.radius = Mathf.Clamp(radius * 0.8f, 0.1f, cc.height / 4f);
+            cc.center = new Vector3(0, cc.height / 2f + cc.skinWidth, 0);
+            Debug.Log($"[SCENE] ✅ CharacterController auto-fit: h={cc.height:F2} r={cc.radius:F2} c={cc.center}");
         }
     }
 }
