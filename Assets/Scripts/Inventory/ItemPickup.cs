@@ -134,9 +134,27 @@ public class ItemPickup : MonoBehaviour
 
         // Pick it up — carry it
         carriedItem = nearestItem.itemData;
-        isCarrying = true;
         nearestItem.OnPickedUp();
         nearestItem = null;
+
+        // Check if it's a gadget (RC car, etc.) — route to gadget inventory
+        if (carriedItem.type == ItemData.ItemType.Gadget)
+        {
+            var gadgetInv = GetComponent<GadgetInventory>();
+            if (gadgetInv != null && gadgetInv.AddGadget(carriedItem))
+            {
+                carriedItem = null; // Don't carry it as a normal item
+                return;
+            }
+            else
+            {
+                Debug.Log("[PICKUP] Gadget slots full! Can't pick up.");
+                carriedItem = null;
+                return;
+            }
+        }
+
+        isCarrying = true;
 
         // Apply speed penalty
         ApplyCarrySlowdown();
@@ -147,6 +165,13 @@ public class ItemPickup : MonoBehaviour
     private void TryDeposit()
     {
         if (!isCarrying || carriedItem == null) return;
+
+        // Gadgets can't go in the cart
+        if (carriedItem.type == ItemData.ItemType.Gadget)
+        {
+            Debug.Log("[PICKUP] Gadgets can't be placed in the cart!");
+            return;
+        }
 
         // Find nearest cart
         CartController[] carts = FindObjectsByType<CartController>(FindObjectsSortMode.None);

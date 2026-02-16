@@ -68,6 +68,15 @@ public class ZombieAI : MonoBehaviour
     private float memoryTimer;
     private bool canSeeTarget;
     private bool canHearTarget;
+    private float alertSnapTimer; // Instant face-target on alert
+
+    // Stun
+    private bool isStunned;
+    private float stunTimer;
+    private float originalMoveSpeed;
+    private float originalChaseSpeed;
+    private Renderer zombieRenderer;
+    private Color originalColor;
 
     // Debug visuals
     private Transform visionCone;
@@ -82,6 +91,7 @@ public class ZombieAI : MonoBehaviour
     public ZombieState State => currentState;
     public ZombieType Type => zombieType;
     public bool ShowDebug { get => showDebugVisuals; set => showDebugVisuals = value; }
+    public bool IsStunned => isStunned;
 
     private void Start()
     {
@@ -152,6 +162,22 @@ public class ZombieAI : MonoBehaviour
     private void Update()
     {
         if (target == null) return;
+
+        // Handle stun
+        if (isStunned)
+        {
+            stunTimer -= Time.deltaTime;
+            if (stunTimer <= 0f)
+            {
+                EndStun();
+            }
+            else
+            {
+                // Stunned — don't process state machine, just stand there slowly
+                agent.speed = originalMoveSpeed * 0.05f;
+                return;
+            }
+        }
 
         // Periodic detection checks
         visionTimer -= Time.deltaTime;
@@ -248,6 +274,27 @@ public class ZombieAI : MonoBehaviour
             }
         }
 
+        // Check RC car noise
+        if (noise != null && noise.RCCarNoiseRadius > 0f)
+        {
+            float distToRC = Vector3.Distance(transform.position, noise.RCCarPosition);
+            if (distToRC < noise.RCCarNoiseRadius && distToRC < effHearing)
+            {
+                lastKnownPosition = noise.RCCarPosition;
+                return true;
+            }
+        }
+        // Check fart bomb noise
+        if (noise != null && noise.FartBombNoiseRadius > 0f)
+        {
+            float distToFart = Vector3.Distance(transform.position, noise.FartBombPosition);
+            if (distToFart < noise.FartBombNoiseRadius && distToFart < effHearing)
+            {
+                lastKnownPosition = noise.FartBombPosition;
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -277,6 +324,15 @@ public class ZombieAI : MonoBehaviour
                 agent.speed = chaseSpeed;
                 agent.angularSpeed = 400f; // 2x turn speed when hunting
                 memoryTimer = chaseMemory;
+                alertSnapTimer = 0.2f; // Instant snap-face for 0.2s
+                // Instantly face the target on alert
+                if (target != null)
+                {
+                    Vector3 dir = (lastKnownPosition - transform.position).normalized;
+                    dir.y = 0;
+                    if (dir.sqrMagnitude > 0.001f)
+                        transform.rotation = Quaternion.LookRotation(dir);
+                }
                 break;
 
             case ZombieState.Attack:
@@ -333,9 +389,25 @@ public class ZombieAI : MonoBehaviour
 
     private void UpdateChase()
     {
+        // Check if RC car is active and closer than the player
+        var rcCar = FindFirstObjectByType<RCCarController>();
+        bool rcCarActive = rcCar != null && rcCar.IsActive;
+
         float distToTarget = Vector3.Distance(transform.position, target.position);
 
-        // Close enough to attack?
+        // If RC car is nearby, check if we should attack it
+        if (rcCarActive)
+        {
+            float distToRC = Vector3.Distance(transform.position, rcCar.transform.position);
+            if (distToRC < attackRange)
+            {
+                // Attack the RC car
+                TransitionTo(ZombieState.Attack);
+                return;
+            }
+        }
+
+        // Close enough to attack player?
         if (distToTarget < attackRange && canSeeTarget)
         {
             TransitionTo(ZombieState.Attack);
@@ -343,9 +415,15 @@ public class ZombieAI : MonoBehaviour
         }
 
         // Can still see/hear target? Update position
-        if (canSeeTarget || canHearTarget)
+        if (canSeeTarget)
         {
             lastKnownPosition = target.position;
+            memoryTimer = chaseMemory;
+        }
+        else if (canHearTarget)
+        {
+            // lastKnownPosition was already set by CheckHearing
+            // (could be RC car or player position)
             memoryTimer = chaseMemory;
         }
         else
@@ -399,6 +477,19 @@ public class ZombieAI : MonoBehaviour
 
     private void PerformAttack()
     {
+        // Check if we can hit the RC car instead
+        var rcCar = FindFirstObjectByType<RCCarController>();
+        if (rcCar != null && rcCar.IsActive)
+        {
+            float distToRC = Vector3.Distance(transform.position, rcCar.transform.position);
+            if (distToRC < attackRange * 1.5f)
+            {
+                rcCar.TakeDamage(attackDamage);
+                Debug.Log($"[ZOMBIE] {zombieType} attacks RC Car for {attackDamage} damage!");
+                return;
+            }
+        }
+
         if (targetHealth == null) return;
         if (targetHealth.IsDead) { TransitionTo(ZombieState.Idle); return; }
 
@@ -657,6 +748,56 @@ public class ZombieAI : MonoBehaviour
         mesh.vertices = vertices;
         mesh.triangles = triangles;
         mesh.RecalculateNormals();
+    }
+    // ======================== STUN ========================
+
+    /// <summary>Apply stun: slow the zombie by (1 - slowMult) for duration seconds.</summary>
+    public void ApplyStun(float duration, float slowMult)
+    {
+        if (isStunned) return; // Already stunned
+
+        isStunned = true;
+        stunTimer = duration;
+
+        // Save original speeds
+        originalMoveSpeed = moveSpeed;
+        originalChaseSpeed = chaseSpeed;
+
+        // Apply slow
+        agent.speed *= slowMult;
+
+        // Stop current path
+        agent.ResetPath();
+
+        // Visual: tint blue
+        if (zombieRenderer == null)
+            zombieRenderer = GetComponentInChildren<Renderer>();
+        if (zombieRenderer != null)
+        {
+            originalColor = zombieRenderer.material.color;
+            zombieRenderer.material.color = new Color(0.3f, 0.5f, 1f, 1f); // Blue tint
+        }
+
+        // Random disorienting spin (90-180 degrees)
+        float randomAngle = Random.Range(90f, 180f) * (Random.value > 0.5f ? 1f : -1f);
+        transform.Rotate(0, randomAngle, 0);
+
+        Debug.Log($"[ZOMBIE] {name} STUNNED for {duration}s!");
+    }
+
+    private void EndStun()
+    {
+        isStunned = false;
+
+        // Restore speeds
+        agent.speed = (currentState == ZombieState.Chase || currentState == ZombieState.Attack)
+            ? chaseSpeed : moveSpeed;
+
+        // Restore color
+        if (zombieRenderer != null)
+            zombieRenderer.material.color = originalColor;
+
+        Debug.Log($"[ZOMBIE] {name} stun wore off.");
     }
 
     private void OnDestroy()

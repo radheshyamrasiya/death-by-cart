@@ -33,7 +33,8 @@ public class ItemData : ScriptableObject
         Supply,
         Weapon,
         Trap,
-        Bomb
+        Bomb,
+        Gadget
     }
 
     /// <summary>

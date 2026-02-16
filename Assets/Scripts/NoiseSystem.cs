@@ -39,19 +39,30 @@ public class NoiseSystem : MonoBehaviour
     private GridInventory gridInventory;
     private float currentCartNoise;
     private float currentPlayerNoise;
+    private float currentRCCarNoise;
+    private Vector3 rcCarPosition;
+    private float currentFartBombNoise;
+    private Vector3 fartBombPosition;
 
     // Ground circle objects
     private Transform cartCircle;
     private Transform playerCircle;
+    private Transform rcCarCircle;
     private Renderer cartCircleRenderer;
     private Renderer playerCircleRenderer;
+    private Renderer rcCarCircleRenderer;
     private Material cartCircleMat;
     private Material playerCircleMat;
+    private Material rcCarCircleMat;
 
     // Public API — zombies read these
     public float CartNoiseRadius => currentCartNoise;
     public float PlayerNoiseRadius => currentPlayerNoise;
+    public float RCCarNoiseRadius => currentRCCarNoise;
+    public float FartBombNoiseRadius => currentFartBombNoise;
     public Vector3 CartPosition => transform.position;
+    public Vector3 RCCarPosition => rcCarPosition;
+    public Vector3 FartBombPosition => fartBombPosition;
     public bool ShowDebug { get => showDebugCircles; set => showDebugCircles = value; }
 
     private void Start()
@@ -65,18 +76,23 @@ public class NoiseSystem : MonoBehaviour
         // Create ground circles
         cartCircle = CreateGroundCircle("CartNoiseCircle", transform);
         playerCircle = CreateGroundCircle("PlayerNoiseCircle", null);
+        rcCarCircle = CreateGroundCircle("RCCarNoiseCircle", null);
 
         cartCircleRenderer = cartCircle.GetComponent<Renderer>();
         playerCircleRenderer = playerCircle.GetComponent<Renderer>();
+        rcCarCircleRenderer = rcCarCircle.GetComponent<Renderer>();
 
         cartCircleMat = cartCircleRenderer.material;
         playerCircleMat = playerCircleRenderer.material;
+        rcCarCircleMat = rcCarCircleRenderer.material;
     }
 
     private void Update()
     {
         UpdateCartNoise();
         UpdatePlayerNoise();
+        UpdateRCCarNoise();
+        UpdateFartBombNoise();
         UpdateVisuals();
     }
 
@@ -159,6 +175,36 @@ public class NoiseSystem : MonoBehaviour
             playerCircle.position = player.transform.position + Vector3.up * 0.05f;
     }
 
+    private void UpdateRCCarNoise()
+    {
+        // Find active RC car
+        var rcCar = FindFirstObjectByType<RCCarController>();
+        if (rcCar != null && rcCar.IsActive)
+        {
+            currentRCCarNoise = rcCar.NoiseRadius;
+            rcCarPosition = rcCar.transform.position;
+        }
+        else
+        {
+            currentRCCarNoise = 0f;
+        }
+    }
+
+    private void UpdateFartBombNoise()
+    {
+        // Find the loudest active fart bomb
+        currentFartBombNoise = 0f;
+        foreach (var bomb in FartBombController.ActiveBombs)
+        {
+            if (bomb == null || !bomb.IsDetonated || bomb.IsFinished) continue;
+            if (bomb.NoiseRadius > currentFartBombNoise)
+            {
+                currentFartBombNoise = bomb.NoiseRadius;
+                fartBombPosition = bomb.transform.position;
+            }
+        }
+    }
+
     private void UpdateVisuals()
     {
         // Cart circle
@@ -194,6 +240,58 @@ public class NoiseSystem : MonoBehaviour
                 float diameter = currentPlayerNoise * 2f;
                 playerCircle.localScale = new Vector3(diameter, 1f, diameter);
                 playerCircleMat.color = playerNoiseColor;
+            }
+        }
+
+        // RC Car circle
+        if (rcCarCircle != null)
+        {
+            bool active = showDebugCircles && currentRCCarNoise > 0.1f;
+            rcCarCircle.gameObject.SetActive(active);
+
+            if (active)
+            {
+                float diameter = currentRCCarNoise * 2f;
+                rcCarCircle.localScale = new Vector3(diameter, 1f, diameter);
+                rcCarCircle.position = rcCarPosition + Vector3.up * 0.05f;
+
+                // Orange pulsing circle
+                float pulse = Mathf.Sin(Time.time * 5f) * 0.08f;
+                rcCarCircleMat.color = new Color(1f, 0.6f, 0f, 0.2f + pulse);
+            }
+        }
+
+        // Fart Bomb circles — one per active detonated bomb
+        foreach (var bomb in FartBombController.ActiveBombs)
+        {
+            if (bomb == null || !bomb.IsDetonated || bomb.IsFinished) continue;
+            if (bomb.NoiseRadius < 0.1f) continue;
+
+            // Reuse a dynamically created circle or find existing
+            Transform circle = bomb.transform.Find("FartNoiseCircle");
+            if (circle == null && showDebugCircles)
+            {
+                circle = CreateGroundCircle("FartNoiseCircle", bomb.transform);
+                circle.gameObject.SetActive(true);
+            }
+            if (circle != null)
+            {
+                bool show = showDebugCircles && bomb.NoiseRadius > 0.1f;
+                circle.gameObject.SetActive(show);
+                if (show)
+                {
+                    float diameter = bomb.NoiseRadius * 2f;
+                    circle.localScale = new Vector3(diameter, 0.01f, diameter);
+                    circle.position = bomb.transform.position + Vector3.up * 0.05f;
+
+                    // Green pulsing circle
+                    Renderer r = circle.GetComponent<Renderer>();
+                    if (r != null)
+                    {
+                        float pulse = Mathf.Sin(Time.time * 6f) * 0.1f;
+                        r.material.color = new Color(0.2f, 0.9f, 0.1f, 0.2f + pulse);
+                    }
+                }
             }
         }
     }

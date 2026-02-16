@@ -10,7 +10,8 @@ public class PlayerStateMachine : MonoBehaviour
     {
         FreeRoam,
         PushingCart,
-        InventoryOpen
+        InventoryOpen,
+        ControllingRC
     }
 
     [Header("Current State (read-only)")]
@@ -71,6 +72,12 @@ public class PlayerStateMachine : MonoBehaviour
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 // Time.timeScale = 0.1f; // Optional: slow-mo while managing inventory
+                break;
+
+            case PlayerState.ControllingRC:
+                if (motor != null) motor.SetMovementEnabled(false);
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
                 break;
         }
     }

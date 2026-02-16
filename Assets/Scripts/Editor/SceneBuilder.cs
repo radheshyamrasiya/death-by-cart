@@ -171,6 +171,10 @@ public class SceneBuilder : EditorWindow
                 player.AddComponent<HealthBarUI>();
             if (player.GetComponent<PlayerCrouch>() == null)
                 player.AddComponent<PlayerCrouch>();
+            if (player.GetComponent<RCCarItem>() == null)
+                player.AddComponent<RCCarItem>();
+            if (player.GetComponent<GadgetInventory>() == null)
+                player.AddComponent<GadgetInventory>();
 
             // Set ground layer for grounded check
             var tpc = player.GetComponent<StarterAssets.ThirdPersonController>();
@@ -204,6 +208,8 @@ public class SceneBuilder : EditorWindow
             player.AddComponent<HealthSystem>();
             player.AddComponent<HealthBarUI>();
             player.AddComponent<PlayerCrouch>();
+            player.AddComponent<RCCarItem>();
+            player.AddComponent<GadgetInventory>();
 
             GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             playerBody.name = "PlayerBody";
@@ -285,6 +291,106 @@ public class SceneBuilder : EditorWindow
             obsRb.useGravity = true;
 
             obs.GetComponent<Renderer>().material = obstacleMat;
+        }
+
+        // ==================== RC CAR PICKUP (WHITE CUBE) ====================
+        {
+            GameObject rcPickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rcPickup.name = "RCCar_Pickup";
+            rcPickup.transform.position = new Vector3(4f, 0.5f, 4f);
+            rcPickup.transform.localScale = new Vector3(0.6f, 0.6f, 0.6f);
+
+            // White material
+            Renderer rcRend = rcPickup.GetComponent<Renderer>();
+            Material rcMat = new Material(GetDefaultLitShader());
+            rcMat.color = Color.white;
+            rcRend.material = rcMat;
+
+            // Create ItemData at runtime for the RC car
+            ItemData rcItemData = ScriptableObject.CreateInstance<ItemData>();
+            rcItemData.itemName = "RC Car";
+            rcItemData.width = 1;
+            rcItemData.height = 1;
+            rcItemData.weight = 0.5f;
+            rcItemData.type = ItemData.ItemType.Gadget;
+            rcItemData.itemColor = Color.white;
+            rcItemData.description = "Remote-controlled distraction car. Press V to deploy.";
+            EnsureFolder("Assets/Items");
+            AssetDatabase.CreateAsset(rcItemData, "Assets/Items/RCCar.asset");
+
+            // Add WorldItem
+            WorldItem rcWorld = rcPickup.AddComponent<WorldItem>();
+            rcWorld.itemData = rcItemData;
+
+            Debug.Log("[SCENE] ✅ RC Car pickup (white cube) spawned at (4, 0.5, 4)");
+        }
+
+        // ==================== FART BOMB PICKUPS (GREEN CUBES) ====================
+        {
+            // Create shared ItemData for Fart Bombs
+            ItemData fartBombData = ScriptableObject.CreateInstance<ItemData>();
+            fartBombData.itemName = "Fart Bomb";
+            fartBombData.width = 1;
+            fartBombData.height = 1;
+            fartBombData.weight = 0.3f;
+            fartBombData.type = ItemData.ItemType.Gadget;
+            fartBombData.itemColor = new Color(0.2f, 0.8f, 0.1f);
+            fartBombData.description = "Remote fart bomb. Place it, then detonate from anywhere!";
+            EnsureFolder("Assets/Items");
+            AssetDatabase.CreateAsset(fartBombData, "Assets/Items/FartBomb.asset");
+
+            // Light green cube
+            GameObject fb1 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fb1.name = "FartBomb_Pickup_1";
+            fb1.transform.position = new Vector3(-5f, 0.5f, 6f);
+            fb1.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            Renderer fb1Rend = fb1.GetComponent<Renderer>();
+            Material fb1Mat = new Material(GetDefaultLitShader());
+            fb1Mat.color = new Color(0.4f, 0.9f, 0.3f); // Light green
+            fb1Rend.material = fb1Mat;
+            WorldItem fb1World = fb1.AddComponent<WorldItem>();
+            fb1World.itemData = fartBombData;
+
+            // Dark green cube
+            GameObject fb2 = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            fb2.name = "FartBomb_Pickup_2";
+            fb2.transform.position = new Vector3(8f, 0.5f, -4f);
+            fb2.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            Renderer fb2Rend = fb2.GetComponent<Renderer>();
+            Material fb2Mat = new Material(GetDefaultLitShader());
+            fb2Mat.color = new Color(0.1f, 0.45f, 0.05f); // Dark green
+            fb2Rend.material = fb2Mat;
+            WorldItem fb2World = fb2.AddComponent<WorldItem>();
+            fb2World.itemData = fartBombData;
+
+            Debug.Log("[SCENE] ✅ Fart Bomb pickups spawned (light green + dark green)");
+        }
+
+        // ==================== STUN MINE PICKUP (BLUE CUBE) ====================
+        {
+            ItemData stunMineData = ScriptableObject.CreateInstance<ItemData>();
+            stunMineData.itemName = "Stun Mine";
+            stunMineData.width = 1;
+            stunMineData.height = 1;
+            stunMineData.weight = 0.4f;
+            stunMineData.type = ItemData.ItemType.Gadget;
+            stunMineData.itemColor = new Color(0.3f, 0.5f, 1f);
+            stunMineData.description = "Proximity stun mine. Stuns nearby zombies for 2 seconds.";
+            EnsureFolder("Assets/Items");
+            AssetDatabase.CreateAsset(stunMineData, "Assets/Items/StunMine.asset");
+
+            GameObject smPickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            smPickup.name = "StunMine_Pickup";
+            smPickup.transform.position = new Vector3(6f, 0.5f, 10f);
+            smPickup.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            Renderer smRend = smPickup.GetComponent<Renderer>();
+            Material smMat = new Material(GetDefaultLitShader());
+            smMat.color = new Color(0.2f, 0.4f, 0.9f); // Blue
+            smRend.material = smMat;
+            WorldItem smWorld = smPickup.AddComponent<WorldItem>();
+            smWorld.itemData = stunMineData;
+
+            Debug.Log("[SCENE] ✅ Stun Mine pickup (blue cube) spawned at (6, 0.5, 10)");
         }
 
         // ==================== LIGHTING ====================

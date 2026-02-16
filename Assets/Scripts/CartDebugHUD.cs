@@ -192,9 +192,9 @@ public class CartDebugHUD : MonoBehaviour
         vpRT.offsetMax = Vector2.zero;
 
         // Content container with vertical layout
-        GameObject content = new GameObject("Content");
+        GameObject content = new GameObject("Content", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
-        contentParent = content.GetComponent<RectTransform>() ?? content.AddComponent<RectTransform>();
+        contentParent = content.GetComponent<RectTransform>();
         contentParent.anchorMin = new Vector2(0, 1);
         contentParent.anchorMax = new Vector2(1, 1);
         contentParent.pivot = new Vector2(0.5f, 1);
