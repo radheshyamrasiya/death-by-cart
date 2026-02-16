@@ -122,6 +122,7 @@ public class CartDebugHUD : MonoBehaviour
         }
 
         if (!panelRoot.activeSelf) return;
+        if (secPlayer == null) return; // Sections not yet initialized
 
         UpdatePlayerSection();
         UpdateHealthSection();
@@ -239,7 +240,7 @@ public class CartDebugHUD : MonoBehaviour
 
     private void UpdatePlayerSection()
     {
-        if (!secPlayer.expanded) return;
+        if (secPlayer == null || !secPlayer.expanded) return;
         int i = 0;
 
         // State
